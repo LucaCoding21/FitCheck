@@ -2,19 +2,15 @@ import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
+import ENV from './env';
 
-// TODO: Replace with your Firebase config from Firebase Console
-// 1. Go to https://console.firebase.google.com
-// 2. Create a new project or select existing
-// 3. Go to Project Settings > General > Your apps
-// 4. Add a web app and copy the config object
 const firebaseConfig = {
-  apiKey: "AIzaSyA9AIWCSgBza8TDZG2bHBudq0Y-k5KSaA0",
-  authDomain: "fitcheck-28882.firebaseapp.com",
-  projectId: "fitcheck-28882",
-  storageBucket: "fitcheck-28882.firebasestorage.app",
-  messagingSenderId: "1029973108831",
-  appId: "1:1029973108831:web:ae5b5da255cae782c253ea"
+  apiKey: ENV.FIREBASE_API_KEY,
+  authDomain: ENV.FIREBASE_AUTH_DOMAIN,
+  projectId: ENV.FIREBASE_PROJECT_ID,
+  storageBucket: ENV.FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: ENV.FIREBASE_MESSAGING_SENDER_ID,
+  appId: ENV.FIREBASE_APP_ID,
 };
 
 const app = initializeApp(firebaseConfig);
