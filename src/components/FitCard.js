@@ -7,12 +7,15 @@ import {
   StyleSheet,
   Animated,
   Alert,
+  ScrollView,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { doc, updateDoc, getDoc } from "firebase/firestore";
 import { db } from "../config/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { theme } from "../styles/theme";
+import Comment from "./Comment";
+import CommentInput from "./CommentInput";
 
 export default function FitCard({ fit }) {
   const { user } = useAuth();
@@ -26,11 +29,24 @@ export default function FitCard({ fit }) {
   const [groupRatings, setGroupRatings] = useState({});
   const [fairRating, setFairRating] = useState(0);
   const [userGroups, setUserGroups] = useState([]);
+  const [showComments, setShowComments] = useState(false);
+  const [comments, setComments] = useState(fit.comments || []);
 
   useEffect(() => {
     calculateFairRating();
     fetchUserGroups();
   }, [fit]);
+
+  // Separate useEffect for comments to avoid conflicts with real-time updates
+  useEffect(() => {
+    if (fit.comments && Array.isArray(fit.comments)) {
+      // Deduplicate comments by ID to prevent duplicates
+      const uniqueComments = fit.comments.filter((comment, index, self) => 
+        index === self.findIndex(c => c.id === comment.id)
+      );
+      setComments(uniqueComments);
+    }
+  }, [fit.comments]);
 
   const fetchUserGroups = async () => {
     try {
@@ -181,6 +197,15 @@ export default function FitCard({ fit }) {
     return colors[parseInt(groupId.slice(-1)) % colors.length];
   };
 
+  const handleCommentAdded = (newComment) => {
+    // Don't add to local state - let the real-time update handle it
+    // This prevents duplicate comments when the fit prop updates
+  };
+
+  const toggleComments = () => {
+    setShowComments(!showComments);
+  };
+
   const renderStars = (rating, size = 16, interactive = false, onStarPress = null) => {
     const stars = [];
     const displayRating = interactive ? (hoverRating || userRating || 0) : rating;
@@ -220,9 +245,17 @@ export default function FitCard({ fit }) {
       <View style={styles.header}>
         <View style={styles.userInfo}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {(fit.userName || "User").charAt(0).toUpperCase()}
-            </Text>
+            {fit.userProfileImageURL ? (
+              <Image 
+                source={{ uri: fit.userProfileImageURL }} 
+                style={styles.avatarImage}
+                defaultSource={require('../../assets/icon.png')}
+              />
+            ) : (
+              <Text style={styles.avatarText}>
+                {(fit.userName || "User").charAt(0).toUpperCase()}
+              </Text>
+            )}
           </View>
           <View style={styles.userDetails}>
             <Text style={styles.username}>{fit.userName || "User"}</Text>
@@ -291,6 +324,42 @@ export default function FitCard({ fit }) {
           </View>
         )}
       </View>
+
+      {/* Comments Section */}
+      <View style={styles.commentsSection}>
+        <TouchableOpacity 
+          style={styles.commentsHeader} 
+          onPress={toggleComments}
+        >
+          <Text style={styles.commentsHeaderText}>
+            {comments.length} comment{comments.length !== 1 ? "s" : ""}
+          </Text>
+          <Text style={styles.commentsToggleText}>
+            {showComments ? "Hide" : "Show"}
+          </Text>
+        </TouchableOpacity>
+
+        {showComments && (
+          <>
+            {comments.length > 0 && (
+              <ScrollView 
+                style={styles.commentsList}
+                showsVerticalScrollIndicator={false}
+                nestedScrollEnabled={true}
+              >
+                {comments.map((comment, index) => (
+                  <Comment key={`${fit.id}_${comment.id || `comment_${index}_${comment.userId || 'unknown'}`}`} comment={comment} />
+                ))}
+              </ScrollView>
+            )}
+            
+            <CommentInput 
+              fitId={fit.id} 
+              onCommentAdded={handleCommentAdded}
+            />
+          </>
+        )}
+      </View>
     </LinearGradient>
   );
 }
@@ -324,6 +393,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginRight: theme.spacing.sm,
+    overflow: "hidden",
+  },
+  avatarImage: {
+    width: "100%",
+    height: "100%",
+    borderRadius: theme.borderRadius.full,
   },
   avatarText: {
     ...theme.typography.body,
@@ -488,6 +563,32 @@ const styles = StyleSheet.create({
   },
   ratingOverlayStars: {
     flexDirection: "row",
+  },
+
+  // Comments styles
+  commentsSection: {
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255, 255, 255, 0.1)",
+  },
+  commentsHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: theme.spacing.md,
+    paddingBottom: theme.spacing.sm,
+  },
+  commentsHeaderText: {
+    ...theme.typography.body,
+    color: theme.colors.text,
+    fontWeight: "600",
+  },
+  commentsToggleText: {
+    ...theme.typography.small,
+    color: theme.colors.primary,
+    fontWeight: "600",
+  },
+  commentsList: {
+    maxHeight: 300,
   },
 
 

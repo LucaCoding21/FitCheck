@@ -72,7 +72,7 @@ const OnboardingScreen = ({ navigation }) => {
       Animated.loop(
         Animated.timing(rotationAnim, {
           toValue: 1,
-          duration: 10000, // 10 seconds for full rotation
+          duration: 30000, // 30 seconds for full rotation - even slower, perfect pace
           useNativeDriver: true,
         })
       ).start();
@@ -83,13 +83,13 @@ const OnboardingScreen = ({ navigation }) => {
   }, []);
 
   const handleGetStarted = () => {
-    // Navigate to registration/signup flow
-    navigation.navigate('Auth', { mode: 'signup' });
+    // Navigate to signup screen
+    navigation.navigate('SignUp');
   };
 
   const handleSignIn = () => {
-    // Navigate to sign in flow
-    navigation.navigate('Auth', { mode: 'signin' });
+    // Navigate to sign in screen
+    navigation.navigate('SignIn');
   };
 
   // Calculate positions for images in elliptical pattern

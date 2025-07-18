@@ -8,6 +8,7 @@ import {
   Alert,
   FlatList,
   StatusBar,
+  Keyboard,
 } from "react-native";
 import {
   collection,
@@ -22,6 +23,7 @@ import {
 import { db } from "../config/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { theme } from "../styles/theme";
+import KeyboardAwareContainer from "../components/KeyboardAwareContainer";
 
 export default function GroupScreen({ navigation }) {
   const { user } = useAuth();
@@ -32,6 +34,11 @@ export default function GroupScreen({ navigation }) {
 
   useEffect(() => {
     fetchUserGroups();
+    
+    // Dismiss keyboard when component unmounts
+    return () => {
+      Keyboard.dismiss();
+    };
   }, []);
 
   const fetchUserGroups = async () => {
@@ -122,10 +129,15 @@ export default function GroupScreen({ navigation }) {
         memberCount: groupData.members.length + 1,
       });
 
-      Alert.alert("Success", `Joined ${groupData.name}!`);
       setGroupCode("");
-      fetchUserGroups();
+      
+      // Wait for user groups to be fetched before navigating
+      await fetchUserGroups();
+      
+      // Navigate directly to Main with the newly joined group selected
+      navigation.replace("Main", { selectedGroup: groupDoc.id });
     } catch (error) {
+      console.error("Error in joinGroup:", error);
       Alert.alert("Error", error.message);
     }
     setLoading(false);
@@ -134,7 +146,7 @@ export default function GroupScreen({ navigation }) {
   const renderGroupCard = ({ item }) => (
     <TouchableOpacity
       style={styles.groupCard}
-      onPress={() => navigation.navigate("Home", { selectedGroup: item.id })}
+      onPress={() => navigation.navigate("Main")}
       activeOpacity={0.7}
     >
       <View style={styles.groupAvatar}>
@@ -153,7 +165,7 @@ export default function GroupScreen({ navigation }) {
   );
 
   return (
-    <View style={styles.container}>
+    <KeyboardAwareContainer>
       <StatusBar barStyle="light-content" />
 
       {/* Header */}
@@ -177,6 +189,22 @@ export default function GroupScreen({ navigation }) {
           value={groupName}
           onChangeText={setGroupName}
           maxLength={30}
+          editable={true}
+          selectTextOnFocus={false}
+          clearButtonMode="while-editing"
+          returnKeyType="done"
+          keyboardType="default"
+          autoCorrect={false}
+          autoComplete="off"
+          autoCapitalize="words"
+          blurOnSubmit={true}
+          onSubmitEditing={() => {
+            Keyboard.dismiss();
+          }}
+          onBlur={() => {
+            // Ensure keyboard is dismissed when input loses focus
+            setTimeout(() => Keyboard.dismiss(), 100);
+          }}
         />
         <TouchableOpacity
           style={[styles.button, styles.createButton]}
@@ -200,6 +228,21 @@ export default function GroupScreen({ navigation }) {
           onChangeText={setGroupCode}
           autoCapitalize="characters"
           maxLength={6}
+          editable={true}
+          selectTextOnFocus={false}
+          clearButtonMode="while-editing"
+          returnKeyType="done"
+          keyboardType="default"
+          autoCorrect={false}
+          autoComplete="off"
+          blurOnSubmit={true}
+          onSubmitEditing={() => {
+            Keyboard.dismiss();
+          }}
+          onBlur={() => {
+            // Ensure keyboard is dismissed when input loses focus
+            setTimeout(() => Keyboard.dismiss(), 100);
+          }}
         />
         <TouchableOpacity
           style={[styles.button, styles.joinButton]}
@@ -232,7 +275,7 @@ export default function GroupScreen({ navigation }) {
           />
         )}
       </View>
-    </View>
+    </KeyboardAwareContainer>
   );
 }
 
@@ -266,6 +309,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: theme.colors.text,
   },
+
   section: {
     paddingHorizontal: 20,
     marginBottom: 24,
@@ -283,6 +327,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: theme.colors.text,
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    minHeight: 50,
   },
   button: {
     borderRadius: 12,

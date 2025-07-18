@@ -18,6 +18,8 @@ import {
   query,
   where,
   getDocs,
+  getDoc,
+  doc,
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "../config/firebase";
@@ -39,6 +41,7 @@ export default function PostFitScreen({ navigation, route }) {
   const [groupMembers, setGroupMembers] = useState([]);
   const [showImageOptions, setShowImageOptions] = useState(false);
   const [userName, setUserName] = useState("");
+  const [userProfileImageURL, setUserProfileImageURL] = useState("");
   const [fadeAnim] = useState(new Animated.Value(0));
   const [slideAnim] = useState(new Animated.Value(50));
   const [scaleAnim] = useState(new Animated.Value(0.8));
@@ -64,6 +67,7 @@ export default function PostFitScreen({ navigation, route }) {
   useEffect(() => {
     if (user && user.uid) {
       fetchUserGroups();
+      fetchUserProfile();
     }
   }, [user]);
 
@@ -92,6 +96,23 @@ export default function PostFitScreen({ navigation, route }) {
         useNativeDriver: true,
       }),
     ]).start();
+  };
+
+  const fetchUserProfile = async () => {
+    try {
+      if (!user || !user.uid) {
+        return;
+      }
+      
+      const userDoc = await getDoc(doc(db, "users", user.uid));
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        setUserName(userData.username || user.email || "User");
+        setUserProfileImageURL(userData.profileImageURL || "");
+      }
+    } catch (error) {
+      console.error("Error fetching user profile:", error);
+    }
   };
 
   const fetchUserGroups = async () => {
@@ -238,6 +259,7 @@ export default function PostFitScreen({ navigation, route }) {
       const baseFitData = {
         userId: user.uid,
         userName: userName,
+        userProfileImageURL: userProfileImageURL,
         imageUrl: imageUrl,
         caption: caption.trim() || "",
         tag: tag.trim() || "",

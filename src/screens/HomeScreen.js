@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, Alert, StatusBar, Modal, Animated } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, Alert, StatusBar, Modal, Animated, Dimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { collection, query, where, orderBy, onSnapshot, getDocs } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
@@ -7,6 +7,8 @@ import { db, auth } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import FitCard from '../components/FitCard';
 import { theme } from '../styles/theme';
+
+const { width, height } = Dimensions.get('window');
 
 export default function HomeScreen({ navigation, route }) {
   const { user } = useAuth();
@@ -22,7 +24,32 @@ export default function HomeScreen({ navigation, route }) {
     groupsWithFits: 0
   });
 
+  // Animation values
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(50)).current;
+  const titleScale = useRef(new Animated.Value(0.8)).current;
+
   useEffect(() => {
+    // Entrance animations
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 1000,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.spring(titleScale, {
+        toValue: 1,
+        tension: 50,
+        friction: 7,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
     fetchUserGroups();
   }, []);
 
@@ -31,6 +58,13 @@ export default function HomeScreen({ navigation, route }) {
       fetchTodaysFits();
     }
   }, [userGroups]);
+
+  // Set filter mode to 'group' when a specific group is selected
+  useEffect(() => {
+    if (selectedGroup && userGroups.length > 0) {
+      setFilterMode('group');
+    }
+  }, [selectedGroup, userGroups]);
 
   const fetchUserGroups = async () => {
     try {
@@ -118,11 +152,29 @@ export default function HomeScreen({ navigation, route }) {
   };
 
   const handleSignOut = async () => {
-    try {
-      await signOut(auth);
-    } catch (error) {
-      Alert.alert('Error', error.message);
-    }
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await signOut(auth);
+              // Navigate back to onboarding screen after successful sign out
+              navigation.replace('Onboarding');
+            } catch (error) {
+              Alert.alert('Error', error.message);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const currentGroup = userGroups.find(g => g.id === selectedGroup);
@@ -146,87 +198,103 @@ export default function HomeScreen({ navigation, route }) {
   };
 
   return (
-    <LinearGradient
-      colors={[theme.colors.background, theme.colors.surface]}
-      style={styles.container}
-    >
-      <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#1a1a1a" />
       
       {/* Enhanced Header */}
-      <View style={styles.header}>
+      <Animated.View 
+        style={[
+          styles.header,
+          {
+            opacity: fadeAnim,
+            transform: [{ translateY: slideAnim }],
+          },
+        ]}
+      >
         <View style={styles.headerTop}>
           <TouchableOpacity 
             style={styles.filterSelector}
             onPress={() => setShowGroupFilter(true)}
+            activeOpacity={0.8}
           >
-            <LinearGradient
-              colors={theme.colors.primaryGradient}
-              style={styles.filterSelectorGradient}
-            >
+            <View style={styles.filterSelectorContainer}>
               <Text style={styles.filterIcon}>{getFilterModeIcon()}</Text>
               <Text style={styles.filterText}>
                 {getFilterModeText()}
               </Text>
               <Text style={styles.filterArrow}>▼</Text>
-            </LinearGradient>
+            </View>
           </TouchableOpacity>
           
-          <TouchableOpacity onPress={handleSignOut} style={styles.signOutButton}>
+          <TouchableOpacity onPress={handleSignOut} style={styles.signOutButton} activeOpacity={0.8}>
             <Text style={styles.signOutText}>👋</Text>
           </TouchableOpacity>
         </View>
         
-        <View style={styles.titleContainer}>
+        <Animated.View 
+          style={[
+            styles.titleContainer,
+            {
+              transform: [{ scale: titleScale }],
+            },
+          ]}
+        >
           <Text style={styles.title}>Today's Fits</Text>
           <Text style={styles.subtitle}>
             {stats.totalFits} fit{stats.totalFits !== 1 ? 's' : ''} • {stats.groupsWithFits} group{stats.groupsWithFits !== 1 ? 's' : ''} • {stats.totalRatings} ratings
           </Text>
-        </View>
-      </View>
+        </Animated.View>
+      </Animated.View>
       
       {/* Content */}
-      {userGroups.length === 0 ? (
-        <View style={styles.emptyState}>
-          <View style={styles.emptyIcon}>
-            <Text style={styles.emptyIconText}>👥</Text>
-          </View>
-          <Text style={styles.emptyText}>Join a group to get started</Text>
-          <Text style={styles.emptySubtext}>
-            Connect with friends and start rating fits together
-          </Text>
-          <TouchableOpacity 
-            style={styles.joinGroupButton}
-            onPress={() => navigation.navigate('Groups')}
-          >
-            <LinearGradient
-              colors={theme.colors.primaryGradient}
-              style={styles.joinGroupGradient}
+      <Animated.View
+        style={[
+          styles.contentContainer,
+          {
+            opacity: fadeAnim,
+            transform: [{ translateY: slideAnim }],
+          },
+        ]}
+      >
+        {userGroups.length === 0 ? (
+          <View style={styles.emptyState}>
+            <View style={styles.emptyIcon}>
+              <Text style={styles.emptyIconText}>👥</Text>
+            </View>
+            <Text style={styles.emptyText}>Join a group to get started</Text>
+            <Text style={styles.emptySubtext}>
+              Connect with friends and start rating fits together
+            </Text>
+            <TouchableOpacity 
+              style={styles.joinGroupButton}
+              onPress={() => navigation.navigate('Groups')}
+              activeOpacity={0.8}
             >
-              <Text style={styles.joinGroupText}>Create or Join Group</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
-      ) : fits.length === 0 ? (
-        <View style={styles.emptyState}>
-          <View style={styles.emptyIcon}>
-            <Text style={styles.emptyIconText}>📸</Text>
+              <View style={styles.joinGroupContainer}>
+                <Text style={styles.joinGroupText}>Create or Join Group</Text>
+              </View>
+            </TouchableOpacity>
           </View>
-          <Text style={styles.emptyText}>No fits posted today</Text>
-          <Text style={styles.emptySubtext}>
-            Be the first to drop your fit in any of your groups
-          </Text>
-        </View>
-      ) : (
-        <FlatList
-          data={fits}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <FitCard fit={item} />}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.feedContainer}
-        />
-      )}
-      
-
+        ) : fits.length === 0 ? (
+          <View style={styles.emptyState}>
+            <View style={styles.emptyIcon}>
+              <Text style={styles.emptyIconText}>📸</Text>
+            </View>
+            <Text style={styles.emptyText}>No fits posted today</Text>
+            <Text style={styles.emptySubtext}>
+              Be the first to drop your fit in any of your groups
+            </Text>
+          </View>
+        ) : (
+          <FlatList
+            data={fits}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => <FitCard fit={item} />}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.feedContainer}
+          />
+        )}
+      </Animated.View>
 
       {/* Group Filter Modal */}
       <Modal
@@ -306,20 +374,21 @@ export default function HomeScreen({ navigation, route }) {
           </View>
         </View>
       </Modal>
-    </LinearGradient>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#1a1a1a',
   },
   
   // Header styles
   header: {
     paddingTop: 60,
-    paddingHorizontal: theme.spacing.md,
-    paddingBottom: theme.spacing.xl,
+    paddingHorizontal: 40,
+    paddingBottom: 40,
   },
   headerTop: {
     flexDirection: 'row',
@@ -327,64 +396,81 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: theme.spacing.md,
   },
+
   filterSelector: {
-    borderRadius: theme.borderRadius.lg,
+    borderRadius: 16,
     overflow: 'hidden',
   },
-  filterSelectorGradient: {
+  filterSelectorContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
+    backgroundColor: '#2a2a2a',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   filterIcon: {
     fontSize: 20,
-    marginRight: theme.spacing.xs,
+    marginRight: 8,
   },
   filterText: {
-    ...theme.typography.body,
-    color: theme.colors.text,
-    fontWeight: '700',
-    marginRight: theme.spacing.xs,
+    fontSize: 16,
+    color: '#FFFFFF',
+    fontWeight: '600',
+    marginRight: 8,
     letterSpacing: 0.3,
   },
   filterArrow: {
-    ...theme.typography.caption,
-    color: theme.colors.text,
-    opacity: 0.8,
+    fontSize: 14,
+    color: '#71717A',
   },
   signOutButton: {
     width: 44,
     height: 44,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.surface,
+    borderRadius: 22,
+    backgroundColor: '#2a2a2a',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
-    ...theme.shadows.sm,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   signOutText: {
     fontSize: 22,
   },
   titleContainer: {
     alignItems: 'flex-start',
+    marginTop: 20,
   },
   title: {
-    ...theme.typography.h1,
-    color: theme.colors.text,
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
     marginBottom: 8,
-    letterSpacing: -0.5,
+    letterSpacing: 0.5,
   },
   subtitle: {
-    ...theme.typography.caption,
-    color: theme.colors.textMuted,
+    fontSize: 16,
+    color: '#71717A',
     letterSpacing: 0.2,
   },
   
   // Content styles
+  contentContainer: {
+    flex: 1,
+  },
   feedContainer: {
-    paddingBottom: theme.spacing.lg,
+    paddingBottom: 24,
   },
   
   // Empty state styles
@@ -392,52 +478,64 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: theme.spacing.xxl,
+    paddingHorizontal: 40,
   },
   emptyIcon: {
     width: 88,
     height: 88,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.surface,
+    borderRadius: 44,
+    backgroundColor: '#2a2a2a',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: theme.spacing.lg,
+    marginBottom: 24,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
-    ...theme.shadows.md,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   },
   emptyIconText: {
     fontSize: 36,
   },
   emptyText: {
-    ...theme.typography.h3,
-    color: theme.colors.text,
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#FFFFFF',
     textAlign: 'center',
-    marginBottom: theme.spacing.sm,
-    letterSpacing: -0.3,
+    marginBottom: 8,
+    letterSpacing: 0.3,
   },
   emptySubtext: {
-    ...theme.typography.body,
-    color: theme.colors.textMuted,
+    fontSize: 16,
+    color: '#71717A',
     textAlign: 'center',
     lineHeight: 22,
-    marginBottom: theme.spacing.xl,
+    marginBottom: 32,
   },
   joinGroupButton: {
-    borderRadius: theme.borderRadius.lg,
+    borderRadius: 16,
     overflow: 'hidden',
-    ...theme.shadows.md,
+    shadowColor: '#B5483D',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
-  joinGroupGradient: {
-    paddingHorizontal: theme.spacing.xl,
-    paddingVertical: theme.spacing.md,
+  joinGroupContainer: {
+    backgroundColor: '#B5483D',
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   joinGroupText: {
-    ...theme.typography.body,
-    color: theme.colors.text,
-    fontWeight: '700',
+    fontSize: 16,
+    color: '#FFFFFF',
+    fontWeight: '600',
     textAlign: 'center',
-    letterSpacing: 0.3,
+    letterSpacing: 0.5,
   },
   
 
@@ -447,14 +545,18 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
   },
   modalContent: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.borderRadius.lg,
+    backgroundColor: '#2a2a2a',
+    borderRadius: 16,
     width: '90%',
     maxHeight: '70%',
-    ...theme.shadows.lg,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 8,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.1)',
   },
@@ -462,55 +564,56 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255, 255, 255, 0.1)',
   },
   modalTitle: {
-    ...theme.typography.h2,
-    color: theme.colors.text,
-    letterSpacing: -0.3,
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
   },
   modalCloseButton: {
-    padding: theme.spacing.xs,
+    padding: 8,
   },
   modalCloseText: {
     fontSize: 24,
-    color: theme.colors.textMuted,
+    color: '#71717A',
   },
   filterOptions: {
-    paddingHorizontal: theme.spacing.md,
-    paddingBottom: theme.spacing.md,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
   },
   filterOption: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: theme.spacing.sm,
-    borderRadius: theme.borderRadius.md,
-    marginBottom: theme.spacing.xs,
+    paddingVertical: 16,
+    borderRadius: 12,
+    marginBottom: 8,
   },
   filterOptionSelected: {
-    backgroundColor: theme.colors.primaryLight,
+    backgroundColor: 'rgba(181, 72, 61, 0.2)',
     borderWidth: 1,
-    borderColor: theme.colors.primary,
+    borderColor: '#B5483D',
   },
   filterOptionIcon: {
     fontSize: 24,
-    marginRight: theme.spacing.sm,
+    marginRight: 12,
   },
   filterOptionText: {
     flex: 1,
   },
   filterOptionTitle: {
-    ...theme.typography.body,
-    color: theme.colors.text,
-    fontWeight: '700',
+    fontSize: 16,
+    color: '#FFFFFF',
+    fontWeight: '600',
     letterSpacing: 0.2,
   },
   filterOptionSubtitle: {
-    ...theme.typography.caption,
-    color: theme.colors.textMuted,
-    marginTop: theme.spacing.xs,
+    fontSize: 14,
+    color: '#71717A',
+    marginTop: 4,
   },
 });
