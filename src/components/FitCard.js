@@ -9,7 +9,6 @@ import {
   Alert,
   ScrollView,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 import { doc, updateDoc, getDoc } from "firebase/firestore";
 import { db } from "../config/firebase";
 import { useAuth } from "../contexts/AuthContext";
@@ -17,7 +16,7 @@ import { theme } from "../styles/theme";
 import Comment from "./Comment";
 import CommentInput from "./CommentInput";
 
-export default function FitCard({ fit }) {
+export default function FitCard({ fit, onCommentSectionOpen }) {
   const { user } = useAuth();
   const [userRating, setUserRating] = useState(
     fit.ratings?.[user?.uid]?.rating || null
@@ -27,7 +26,7 @@ export default function FitCard({ fit }) {
     Array(5).fill().map(() => new Animated.Value(1))
   );
   const [groupRatings, setGroupRatings] = useState({});
-  const [fairRating, setFairRating] = useState(0);
+  const [fairRating, setFairRating] = useState(fit.fairRating || 0);
   const [userGroups, setUserGroups] = useState([]);
   const [showComments, setShowComments] = useState(false);
   const [comments, setComments] = useState(fit.comments || []);
@@ -180,22 +179,46 @@ export default function FitCard({ fit }) {
 
   const formatTimeAgo = (date) => {
     const now = new Date();
-    const diffInHours = Math.floor((now - date.toDate()) / (1000 * 60 * 60));
+    const diffInMinutes = Math.floor((now - date.toDate()) / (1000 * 60));
 
-    if (diffInHours < 1) return "Just now";
+    if (diffInMinutes < 1) return "Just now";
+    if (diffInMinutes === 1) return "1 min ago";
+    if (diffInMinutes < 60) return `${diffInMinutes} mins ago`;
+    
+    const diffInHours = Math.floor(diffInMinutes / 60);
     if (diffInHours === 1) return "1 hour ago";
     return `${diffInHours} hours ago`;
   };
 
-  const getGroupBadgeColor = (groupId) => {
-    const colors = [
-      theme.colors.primary,
-      theme.colors.accent,
-      theme.colors.fire,
-      theme.colors.mid,
-    ];
-    return colors[parseInt(groupId.slice(-1)) % colors.length];
+  const [groupName, setGroupName] = useState("");
+
+  const getGroupName = async (groupId) => {
+    if (!groupId) return "";
+    
+    try {
+      const groupDoc = await getDoc(doc(db, "groups", groupId));
+      if (groupDoc.exists()) {
+        const groupData = groupDoc.data();
+        return groupData.name || "Unknown Group";
+      }
+      return "Unknown Group";
+    } catch (error) {
+      console.error("Error fetching group name:", error);
+      return "Unknown Group";
+    }
   };
+
+  // Fetch group name when fit changes
+  useEffect(() => {
+    const fetchGroupName = async () => {
+      if (fit.groupIds && fit.groupIds.length > 0) {
+        const name = await getGroupName(fit.groupIds[0]); // Get the first group name
+        setGroupName(name);
+      }
+    };
+    
+    fetchGroupName();
+  }, [fit.groupIds]);
 
   const handleCommentAdded = (newComment) => {
     // Don't add to local state - let the real-time update handle it
@@ -203,7 +226,13 @@ export default function FitCard({ fit }) {
   };
 
   const toggleComments = () => {
-    setShowComments(!showComments);
+    const newShowComments = !showComments;
+    setShowComments(newShowComments);
+    
+    // If comments are being opened, trigger scroll to this card
+    if (newShowComments && onCommentSectionOpen) {
+      onCommentSectionOpen(fit.id);
+    }
   };
 
   const renderStars = (rating, size = 16, interactive = false, onStarPress = null) => {
@@ -212,7 +241,6 @@ export default function FitCard({ fit }) {
     
     for (let i = 1; i <= 5; i++) {
       const isFilled = i <= displayRating;
-      const isSelected = i <= (userRating || 0);
       
       stars.push(
         <TouchableOpacity
@@ -240,8 +268,8 @@ export default function FitCard({ fit }) {
   };
 
   return (
-    <LinearGradient colors={theme.colors.cardGradient} style={styles.container}>
-      {/* Enhanced Header with Group Context */}
+    <View style={styles.container}>
+      {/* User Information Header */}
       <View style={styles.header}>
         <View style={styles.userInfo}>
           <View style={styles.avatar}>
@@ -258,71 +286,47 @@ export default function FitCard({ fit }) {
             )}
           </View>
           <View style={styles.userDetails}>
-            <Text style={styles.username}>{fit.userName || "User"}</Text>
-            <Text style={styles.timestamp}>{formatTimeAgo(fit.createdAt)}</Text>
+            <Text style={styles.username}>{fit.userName || "lucailliam"}</Text>
+            <Text style={styles.timestamp}>
+              {formatTimeAgo(fit.createdAt)} • {groupName}
+            </Text>
           </View>
         </View>
 
-        {/* Rating pill in header */}
+        {/* Rating Display */}
         {fairRating > 0 && (
-          <View style={styles.headerRatingPill}>
-            <Text style={styles.headerRatingPillText}>
-              {fairRating.toFixed(1)} ★
+          <View style={styles.headerRating}>
+            <Text style={styles.starIcon}>★</Text>
+            <Text style={styles.ratingText}>
+              {fairRating.toFixed(1)} ({fit.ratingCount || 0})
             </Text>
           </View>
         )}
       </View>
 
-      {/* Image with overlay */}
-      <View style={styles.imageContainer}>
-        <Image source={{ uri: fit.imageUrl }} style={styles.image} />
-
-
-
-        {/* Tag overlay */}
-        {fit.tag && (
-          <View style={styles.tagOverlay}>
-            <LinearGradient
-              colors={["rgba(99, 102, 241, 0.8)", "rgba(139, 92, 246, 0.8)"]}
-              style={styles.tagGradient}
-            >
-              <Text style={styles.tagText}>#{fit.tag}</Text>
-            </LinearGradient>
-          </View>
-        )}
-      </View>
-
-
-
-      {/* Caption */}
-      {fit.caption && <Text style={styles.caption}>{fit.caption}</Text>}
-
-
-
-      {/* Interactive Rating Buttons */}
-      <View style={styles.ratingContainer}>
-        <Text style={styles.ratingTitle}>Rate this fit:</Text>
-        <View style={styles.ratingBackground}>
-          <View style={styles.starsRatingContainer}>
-            {renderStars(0, 32, true, rateFit)}
-          </View>
-          {userRating > 0 && (
-            <Text style={styles.ratingLabel}>
-              {userRating === 1 ? "Poor" : 
-               userRating === 2 ? "Fair" : 
-               userRating === 3 ? "Good" : 
-               userRating === 4 ? "Great" : "Perfect"}
+      {/* Post Content */}
+      {fit.caption && (
+        <View style={styles.contentSection}>
+          <Text style={styles.caption}>{fit.caption}</Text>
+          {fit.hashtags && fit.hashtags.length > 0 && (
+            <Text style={styles.hashtags}>
+              {fit.hashtags.map(tag => `#${tag}`).join(' ')}
             </Text>
           )}
         </View>
+      )}
 
-        {fit.ratingCount > 0 && (
-          <View style={styles.ratingStats}>
-            <Text style={styles.ratingStatsText}>
-              {fit.ratingCount} rating{fit.ratingCount !== 1 ? "s" : ""} • {groupRatings.length} group{groupRatings.length !== 1 ? "s" : ""}
-            </Text>
-          </View>
-        )}
+      {/* Main Image */}
+      <View style={styles.imageContainer}>
+        <Image source={{ uri: fit.imageUrl }} style={styles.image} />
+      </View>
+
+      {/* Rate The Fit Section */}
+      <View style={styles.rateSection}>
+        <Text style={styles.rateTitle}>Rate The Fit</Text>
+        <View style={styles.starsContainer}>
+          {renderStars(0, 24, true, rateFit)}
+        </View>
       </View>
 
       {/* Comments Section */}
@@ -331,11 +335,11 @@ export default function FitCard({ fit }) {
           style={styles.commentsHeader} 
           onPress={toggleComments}
         >
-          <Text style={styles.commentsHeaderText}>
-            {comments.length} comment{comments.length !== 1 ? "s" : ""}
+          <Text style={styles.commentsCount}>
+            {comments.length} Comment{comments.length !== 1 ? 's' : ''}
           </Text>
-          <Text style={styles.commentsToggleText}>
-            {showComments ? "Hide" : "Show"}
+          <Text style={styles.commentsToggle}>
+            {showComments ? '▼' : '▼'}
           </Text>
         </TouchableOpacity>
 
@@ -347,7 +351,7 @@ export default function FitCard({ fit }) {
                 showsVerticalScrollIndicator={false}
                 nestedScrollEnabled={true}
               >
-                {comments.map((comment, index) => (
+                {comments.slice(0, 1).map((comment, index) => (
                   <Comment key={`${fit.id}_${comment.id || `comment_${index}_${comment.userId || 'unknown'}`}`} comment={comment} />
                 ))}
               </ScrollView>
@@ -360,236 +364,162 @@ export default function FitCard({ fit }) {
           </>
         )}
       </View>
-    </LinearGradient>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: theme.spacing.lg,
-    borderRadius: theme.borderRadius.xl,
-    marginHorizontal: theme.spacing.md,
-    ...theme.shadows.md,
-    overflow: "hidden",
+    backgroundColor: '#2A2A2A',
+    paddingLeft: 0.25,
+    paddingRight: 2,
+    borderRadius: 12,
+    marginBottom: 16,
+    marginHorizontal: 1,
+    overflow: 'hidden',
   },
 
   // Header styles
   header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: theme.spacing.md,
-    paddingBottom: theme.spacing.sm,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    paddingBottom: 12,
   },
   userInfo: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
   },
   avatar: {
     width: 40,
     height: 40,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.primary,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: theme.spacing.sm,
-    overflow: "hidden",
+    borderRadius: 20,
+    backgroundColor: '#6366F1',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+    overflow: 'hidden',
   },
   avatarImage: {
-    width: "100%",
-    height: "100%",
-    borderRadius: theme.borderRadius.full,
+    width: '100%',
+    height: '100%',
+    borderRadius: 20,
   },
   avatarText: {
-    ...theme.typography.body,
-    color: theme.colors.text,
-    fontWeight: "700",
+    fontSize: 16,
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
   userDetails: {
-    flexDirection: "column",
-    justifyContent: "center",
+    flex: 1,
   },
   username: {
-    ...theme.typography.body,
-    color: theme.colors.text,
-    fontWeight: "600",
+    fontSize: 16,
+    color: '#FFFFFF',
+    fontWeight: '600',
+    marginBottom: 2,
   },
   timestamp: {
-    ...theme.typography.small,
-    color: theme.colors.textMuted,
-    marginTop: 2,
-  },
-
-
-  // Star styles
-  star: {
-    color: theme.colors.textMuted,
-  },
-  starFilled: {
-    color: "#FFD700", // Gold color for filled stars
-  },
-  starEmpty: {
-    color: "rgba(255, 255, 255, 0.3)", // Semi-transparent for empty stars
-  },
-  starButton: {
-    padding: 3,
-    marginHorizontal: 2,
-  },
-
-  // Header rating pill styles
-  headerRatingPill: {
-    backgroundColor: "rgba(0, 0, 0, 0.6)",
-    borderRadius: 16,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-  },
-  headerRatingPillText: {
-    color: theme.colors.text,
-    fontWeight: "600",
     fontSize: 14,
+    color: '#71717A',
+  },
+  headerRating: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  starIcon: {
+    fontSize: 16,
+    color: '#FFD700',
+    marginRight: 4,
+  },
+  ratingText: {
+    fontSize: 14,
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+
+  // Content section
+  contentSection: {
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+  },
+  caption: {
+    fontSize: 16,
+    color: '#FFFFFF',
+    lineHeight: 22,
+    marginBottom: 8,
+  },
+  hashtags: {
+    fontSize: 16,
+    color: '#B5483D',
+    fontWeight: '600',
   },
 
   // Image styles
   imageContainer: {
-    position: "relative",
-    borderRadius: theme.borderRadius.md,
-    overflow: "hidden",
-    marginHorizontal: theme.spacing.sm,
+    marginHorizontal: 16,
+    marginBottom: 16,
   },
   image: {
-    width: "100%",
-    aspectRatio: 3 / 4,
-    borderRadius: theme.borderRadius.md,
-  },
-  tagOverlay: {
-    position: "absolute",
-    top: theme.spacing.sm,
-    right: theme.spacing.sm,
-    borderRadius: theme.borderRadius.md,
-    overflow: "hidden",
-  },
-  tagGradient: {
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.xs,
-  },
-  tagText: {
-    ...theme.typography.caption,
-    color: theme.colors.text,
-    fontWeight: "600",
+    width: '100%',
+    aspectRatio: 3 / 3,
+    borderRadius: 8,
   },
 
-  // Caption styles
-  caption: {
-    ...theme.typography.body,
-    color: theme.colors.textSecondary,
-    padding: theme.spacing.md,
-    paddingTop: theme.spacing.sm,
-    lineHeight: 22,
+  // Rate section
+  rateSection: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    alignItems: 'center',
   },
-
-
-
-  // Rating styles
-  ratingContainer: {
-    padding: theme.spacing.md,
-    paddingTop: theme.spacing.sm,
-  },
-  ratingTitle: {
-    ...theme.typography.body,
-    color: theme.colors.text,
-    fontWeight: "600",
-    marginBottom: theme.spacing.sm,
-  },
-  ratingBackground: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.borderRadius.lg,
-    padding: theme.spacing.lg,
-    marginBottom: theme.spacing.sm,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.1)",
-    ...theme.shadows.sm,
-  },
-  starsRatingContainer: {
-    flexDirection: "row",
-    justifyContent: "center",
-    marginBottom: theme.spacing.sm,
-  },
-  ratingLabel: {
-    ...theme.typography.body,
-    color: theme.colors.text,
-    fontWeight: "600",
-    textAlign: "center",
-    letterSpacing: 0.5,
-  },
-  ratingStats: {
-    alignItems: "center",
-    marginTop: theme.spacing.xs,
-  },
-  ratingStatsText: {
-    ...theme.typography.small,
-    color: theme.colors.textMuted,
-  },
-
-  // New styles for rating overlay
-  ratingOverlay: {
-    position: "absolute",
-    top: theme.spacing.md,
-    right: theme.spacing.md,
-    backgroundColor: "rgba(0, 0, 0, 0.8)",
-    borderRadius: theme.borderRadius.lg,
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.xs,
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "rgba(255, 215, 0, 0.5)",
-    ...theme.shadows.md,
-    shadowColor: "#FFD700",
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  ratingOverlayContent: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  ratingOverlayText: {
-    ...theme.typography.body,
-    color: theme.colors.text,
-    fontWeight: "700",
+  rateTitle: {
     fontSize: 16,
-    marginRight: theme.spacing.xs,
+    color: '#FFFFFF',
+    fontWeight: '600',
+    marginBottom: 12,
   },
-  ratingOverlayStars: {
-    flexDirection: "row",
+  starsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+  },
+  starButton: {
+    padding: 4,
+    marginHorizontal: 2,
+  },
+  star: {
+    color: '#71717A',
+  },
+  starFilled: {
+    color: '#FFD700',
+  },
+  starEmpty: {
+    color: '#71717A',
   },
 
   // Comments styles
   commentsSection: {
     borderTopWidth: 1,
-    borderTopColor: "rgba(255, 255, 255, 0.1)",
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
   },
   commentsHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: theme.spacing.md,
-    paddingBottom: theme.spacing.sm,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    paddingBottom: 12,
   },
-  commentsHeaderText: {
-    ...theme.typography.body,
-    color: theme.colors.text,
-    fontWeight: "600",
+  commentsCount: {
+    fontSize: 16,
+    color: '#FFFFFF',
+    fontWeight: '600',
   },
-  commentsToggleText: {
-    ...theme.typography.small,
-    color: theme.colors.primary,
-    fontWeight: "600",
+  commentsToggle: {
+    fontSize: 16,
+    color: '#71717A',
   },
   commentsList: {
-    maxHeight: 300,
+    maxHeight: 200,
   },
-
-
 });
