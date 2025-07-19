@@ -251,51 +251,40 @@ export default function PostFitScreen({ navigation, route }) {
     }
 
     setLoading(true);
-    try {
-      const imageUrl = await uploadImage(image);
-      const userGroupIds = userGroups.map((group) => group.id);
 
-      // Prepare the base document data
-      const baseFitData = {
+    try {
+      // Upload image to Firebase Storage
+      const imageURL = await uploadImage(image);
+
+      // Create fit document
+      const fitData = {
         userId: user.uid,
         userName: userName,
+        userEmail: user.email,
         userProfileImageURL: userProfileImageURL,
-        imageUrl: imageUrl,
-        caption: caption.trim() || "",
-        tag: tag.trim() || "",
-        createdAt: new Date(),
+        imageURL: imageURL,
+        caption: caption.trim(),
+        tag: tag.trim(),
+        groupIds: userGroups.map((group) => group.id),
         ratings: {},
-        fairRating: 0,
         ratingCount: 0,
-        platform: "mobile",
-        version: "1.0",
+        fairRating: 0,
+        comments: [],
+        createdAt: new Date(),
+        lastUpdated: new Date(),
       };
 
-      console.log("Posting fit to groups:", userGroupIds);
+      await addDoc(collection(db, "fits"), fitData);
 
-      // Create a single fit document with all group IDs
-      const fitData = {
-        ...baseFitData,
-        groupIds: userGroupIds, // Store all group IDs in one field
-      };
-
-      const docRef = await addDoc(collection(db, "fits"), fitData);
-      console.log(`Fit posted successfully to ${userGroupIds.length} groups`);
-
-      // Clear form
-      setImage(null);
-      setCaption("");
-      setTag("");
-      setShowImageOptions(false);
-
-      Alert.alert("Success", "Your fit has been posted! 🔥", [
-        { text: "OK", onPress: () => navigation.goBack() },
+      Alert.alert("Success", "Your fit has been posted!", [
+        {
+          text: "OK",
+          onPress: () => navigation.goBack(),
+        },
       ]);
     } catch (error) {
       console.error("Error posting fit:", error);
-
-      // More specific error messages
-      let errorMessage = "Failed to post your fit. Please try again.";
+      let errorMessage = "Failed to post fit. Please try again.";
 
       if (error.code === "permission-denied") {
         errorMessage =
@@ -322,16 +311,10 @@ export default function PostFitScreen({ navigation, route }) {
   }
 
   return (
-    <LinearGradient
-      colors={[theme.colors.background, theme.colors.surface]}
-      style={styles.container}
-    >
-      <StatusBar
-        barStyle="light-content"
-        backgroundColor={theme.colors.background}
-      />
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
 
-      {/* Cool Animated Header */}
+      {/* Clean Header */}
       <Animated.View 
         style={[
           styles.header,
@@ -342,12 +325,9 @@ export default function PostFitScreen({ navigation, route }) {
           onPress={() => navigation.goBack()}
           style={styles.backButton}
         >
-          <LinearGradient
-            colors={theme.colors.surfaceGradient || [theme.colors.surface, theme.colors.card]}
-            style={styles.backButtonGradient}
-          >
+          <View style={styles.backButtonContainer}>
             <Text style={styles.backIcon}>←</Text>
-          </LinearGradient>
+          </View>
         </TouchableOpacity>
 
         <View style={styles.headerCenter}>
@@ -364,26 +344,20 @@ export default function PostFitScreen({ navigation, route }) {
           ]}
           activeOpacity={0.8}
         >
-          <LinearGradient
-            colors={
-              image && !loading
-                ? theme.colors.accentGradient
-                : [theme.colors.textMuted, theme.colors.textMuted]
+          <View style={[
+            styles.postButtonContainer,
+            {
+              backgroundColor: image && !loading ? theme.colors.primary : theme.colors.textMuted,
             }
-            style={styles.postButtonGradient}
-          >
+          ]}>
             <Text style={styles.postButtonText}>
               {loading ? "Posting..." : "Post"}
             </Text>
-          </LinearGradient>
+          </View>
         </TouchableOpacity>
       </Animated.View>
 
-      <KeyboardAwareContainer
-        behavior="padding"
-        keyboardVerticalOffset={0}
-        style={styles.contentContainer}
-      >
+      <KeyboardAwareContainer style={styles.contentContainer}>
         <ScrollView
           style={styles.scrollContainer}
           contentContainerStyle={styles.scrollContent}
@@ -391,10 +365,10 @@ export default function PostFitScreen({ navigation, route }) {
           keyboardShouldPersistTaps="handled"
           bounces={false}
         >
-          {/* Hero Image Section */}
+          {/* Image Section */}
           <Animated.View 
             style={[
-              styles.heroSection,
+              styles.imageSection,
               { opacity: fadeAnim, transform: [{ scale: scaleAnim }] }
             ]}
           >
@@ -406,61 +380,44 @@ export default function PostFitScreen({ navigation, route }) {
               {image ? (
                 <>
                   <Image source={{ uri: image }} style={styles.image} />
-                  <LinearGradient
-                    colors={['transparent', 'rgba(0,0,0,0.7)']}
-                    style={styles.imageOverlay}
-                  >
+                  <View style={styles.imageOverlay}>
                     <View style={styles.imageActions}>
                       <TouchableOpacity
                         style={styles.actionButton}
                         onPress={() => setImage(null)}
                       >
-                        <LinearGradient
-                          colors={theme.colors.dangerGradient || [theme.colors.error, theme.colors.error]}
-                          style={styles.actionButtonGradient}
-                        >
+                        <View style={styles.actionButtonContainer}>
                           <Text style={styles.actionIcon}>🗑️</Text>
-                        </LinearGradient>
+                        </View>
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={styles.actionButton}
                         onPress={() => setShowImageOptions(true)}
                       >
-                        <LinearGradient
-                          colors={theme.colors.primaryGradient || [theme.colors.primary, theme.colors.secondary]}
-                          style={styles.actionButtonGradient}
-                        >
+                        <View style={styles.actionButtonContainer}>
                           <Text style={styles.actionIcon}>🔄</Text>
-                        </LinearGradient>
+                        </View>
                       </TouchableOpacity>
                     </View>
-                  </LinearGradient>
+                  </View>
                 </>
               ) : (
-                <LinearGradient
-                  colors={theme.colors.cardGradient}
-                  style={styles.imagePlaceholder}
-                >
+                <View style={styles.imagePlaceholder}>
                   <View style={styles.placeholderContent}>
                     <View style={styles.placeholderIcon}>
-                      <LinearGradient
-                        colors={theme.colors.accentGradient || [theme.colors.accent, theme.colors.accent]}
-                        style={styles.placeholderIconGradient}
-                      >
-                        <Text style={styles.placeholderEmoji}>📸</Text>
-                      </LinearGradient>
+                      <Text style={styles.placeholderEmoji}>📸</Text>
                     </View>
                     <Text style={styles.placeholderTitle}>Add Your Fit</Text>
                     <Text style={styles.placeholderSubtext}>
                       Tap to capture or choose your style
                     </Text>
                   </View>
-                </LinearGradient>
+                </View>
               )}
             </TouchableOpacity>
           </Animated.View>
 
-          {/* Photo Source Options */}
+          {/* Photo Options */}
           {(!image || showImageOptions) && (
             <Animated.View 
               style={[
@@ -476,18 +433,13 @@ export default function PostFitScreen({ navigation, route }) {
                 }}
                 activeOpacity={0.8}
               >
-                <LinearGradient
-                  colors={theme.colors.primaryGradient || [theme.colors.primary, theme.colors.secondary]}
-                  style={styles.photoOptionGradient}
-                >
+                <View style={styles.photoOptionContainer}>
                   <View style={styles.photoOptionContent}>
                     <Text style={styles.photoOptionIcon}>📷</Text>
                     <Text style={styles.photoOptionText}>Camera</Text>
-                    <Text style={styles.photoOptionSubtext}>
-                      Take new photo
-                    </Text>
+                    <Text style={styles.photoOptionSubtext}>Take new photo</Text>
                   </View>
-                </LinearGradient>
+                </View>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -498,18 +450,13 @@ export default function PostFitScreen({ navigation, route }) {
                 }}
                 activeOpacity={0.8}
               >
-                <LinearGradient
-                  colors={[theme.colors.secondary, theme.colors.accent]}
-                  style={styles.photoOptionGradient}
-                >
+                <View style={styles.photoOptionContainer}>
                   <View style={styles.photoOptionContent}>
                     <Text style={styles.photoOptionIcon}>🖼️</Text>
                     <Text style={styles.photoOptionText}>Gallery</Text>
-                    <Text style={styles.photoOptionSubtext}>
-                      Choose existing
-                    </Text>
+                    <Text style={styles.photoOptionSubtext}>Choose existing</Text>
                   </View>
-                </LinearGradient>
+                </View>
               </TouchableOpacity>
             </Animated.View>
           )}
@@ -568,12 +515,9 @@ export default function PostFitScreen({ navigation, route }) {
                     style={styles.quickTag}
                     onPress={() => setTag(tag)}
                   >
-                    <LinearGradient
-                      colors={theme.colors.surfaceGradient}
-                      style={styles.quickTagGradient}
-                    >
+                    <View style={styles.quickTagContainer}>
                       <Text style={styles.quickTagText}>#{tag}</Text>
-                    </LinearGradient>
+                    </View>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -581,16 +525,17 @@ export default function PostFitScreen({ navigation, route }) {
           </Animated.View>
         </ScrollView>
       </KeyboardAwareContainer>
-    </LinearGradient>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: theme.colors.background,
   },
 
-  // Enhanced Header styles
+  // Header styles
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -598,60 +543,67 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingHorizontal: theme.spacing.md,
     paddingBottom: theme.spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255, 255, 255, 0.05)",
+    backgroundColor: theme.colors.background,
   },
   backButton: {
     width: 44,
     height: 44,
     borderRadius: theme.borderRadius.full,
-    justifyContent: "center",
-    alignItems: "center",
     overflow: "hidden",
     ...theme.shadows.sm,
   },
-  backButtonGradient: {
+  backButtonContainer: {
     width: "100%",
     height: "100%",
+    backgroundColor: theme.colors.surface,
     justifyContent: "center",
     alignItems: "center",
+    borderRadius: theme.borderRadius.full,
   },
   backIcon: {
-    ...theme.typography.h3,
-    color: theme.colors.textSecondary,
     fontSize: 20,
+    color: theme.colors.text,
+    fontWeight: "600",
   },
   headerCenter: {
-    alignItems: "center",
     flex: 1,
+    alignItems: "center",
+    marginHorizontal: theme.spacing.md,
   },
   title: {
-    ...theme.typography.h3,
+    fontSize: 24,
+    fontWeight: "bold",
     color: theme.colors.text,
-    fontWeight: "700",
+    marginBottom: 2,
+    letterSpacing: 0.5,
   },
   subtitle: {
-    ...theme.typography.caption,
-    color: theme.colors.textMuted,
-    marginTop: 2,
+    fontSize: 14,
+    color: theme.colors.textSecondary,
+    letterSpacing: 0.3,
   },
   postButton: {
+    width: 80,
+    height: 44,
     borderRadius: theme.borderRadius.lg,
     overflow: "hidden",
     ...theme.shadows.sm,
   },
   postButtonDisabled: {
-    opacity: 0.6,
+    opacity: 0.5,
   },
-  postButtonGradient: {
-    paddingHorizontal: theme.spacing.lg,
-    paddingVertical: theme.spacing.sm,
+  postButtonContainer: {
+    width: "100%",
+    height: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+    borderRadius: theme.borderRadius.lg,
   },
   postButtonText: {
-    ...theme.typography.caption,
+    fontSize: 16,
     color: theme.colors.text,
-    fontWeight: "700",
-    fontSize: 14,
+    fontWeight: "600",
+    letterSpacing: 0.5,
   },
 
   // Content container styles
@@ -664,14 +616,15 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     padding: theme.spacing.md,
+    paddingBottom: 100, // Add bottom padding for navigator
   },
 
-  // Hero section styles
-  heroSection: {
+  // Image section styles
+  imageSection: {
     marginBottom: theme.spacing.xl,
-    borderRadius: theme.borderRadius.xl,
+    borderRadius: theme.borderRadius.lg,
     overflow: "hidden",
-    ...theme.shadows.lg,
+    ...theme.shadows.md,
   },
   imageContainer: {
     aspectRatio: 3 / 4,
@@ -688,7 +641,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    borderRadius: theme.borderRadius.xl,
+    backgroundColor: "rgba(0, 0, 0, 0.3)",
+    borderRadius: theme.borderRadius.lg,
   },
   imageActions: {
     position: "absolute",
@@ -698,14 +652,18 @@ const styles = StyleSheet.create({
     gap: theme.spacing.xs,
   },
   actionButton: {
-    width: 36,
-    height: 36,
+    width: 40,
+    height: 40,
     borderRadius: theme.borderRadius.full,
+    overflow: "hidden",
+    ...theme.shadows.md,
+  },
+  actionButtonContainer: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: theme.colors.surface,
     justifyContent: "center",
     alignItems: "center",
-  },
-  actionButtonGradient: {
-    padding: theme.spacing.xs,
     borderRadius: theme.borderRadius.full,
   },
   actionIcon: {
@@ -715,9 +673,11 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    backgroundColor: theme.colors.surface,
     borderWidth: 2,
     borderColor: "rgba(255, 255, 255, 0.1)",
     borderStyle: "dashed",
+    borderRadius: theme.borderRadius.lg,
   },
   placeholderContent: {
     alignItems: "center",
@@ -734,24 +694,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.1)",
   },
-  placeholderIconGradient: {
-    padding: theme.spacing.sm,
-    borderRadius: theme.borderRadius.full,
-  },
   placeholderEmoji: {
     fontSize: 32,
   },
   placeholderTitle: {
-    ...theme.typography.h3,
+    fontSize: 20,
+    fontWeight: "600",
     color: theme.colors.text,
     marginBottom: theme.spacing.xs,
-    fontWeight: "600",
+    letterSpacing: 0.3,
   },
   placeholderSubtext: {
-    ...theme.typography.body,
-    color: theme.colors.textMuted,
+    fontSize: 16,
+    color: theme.colors.textSecondary,
     textAlign: "center",
     lineHeight: 20,
+    letterSpacing: 0.3,
   },
 
   // Photo options styles
@@ -766,9 +724,10 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     ...theme.shadows.sm,
   },
-  photoOptionGradient: {
+  photoOptionContainer: {
     padding: theme.spacing.md,
     alignItems: "center",
+    backgroundColor: theme.colors.surface,
   },
   photoOptionContent: {
     alignItems: "center",
@@ -778,15 +737,16 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.xs,
   },
   photoOptionText: {
-    ...theme.typography.body,
+    fontSize: 16,
     color: theme.colors.text,
     fontWeight: "600",
     marginBottom: 2,
+    letterSpacing: 0.3,
   },
   photoOptionSubtext: {
-    ...theme.typography.caption,
-    color: "rgba(255, 255, 255, 0.8)",
     fontSize: 12,
+    color: theme.colors.textSecondary,
+    letterSpacing: 0.3,
   },
 
   // Form section styles
@@ -803,25 +763,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.xs,
   },
   inputLabel: {
-    ...theme.typography.body,
-    color: theme.colors.text,
-    fontWeight: "600",
-  },
-  inputHint: {
-    ...theme.typography.caption,
-    color: theme.colors.textMuted,
-    fontSize: 12,
-  },
-  tagInput: {
-    backgroundColor: theme.colors.background,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.1)",
-    padding: theme.spacing.md,
-    borderRadius: theme.borderRadius.lg,
     fontSize: 16,
     color: theme.colors.text,
-    ...theme.shadows.sm,
-    minHeight: 50,
+    fontWeight: "600",
+    letterSpacing: 0.3,
+  },
+  inputHint: {
+    fontSize: 12,
+    color: theme.colors.textMuted,
+    letterSpacing: 0.3,
   },
 
   // Quick tags styles
@@ -829,10 +779,11 @@ const styles = StyleSheet.create({
     gap: theme.spacing.sm,
   },
   quickTagsTitle: {
-    ...theme.typography.body,
+    fontSize: 16,
     color: theme.colors.text,
     fontWeight: "600",
     paddingHorizontal: theme.spacing.xs,
+    letterSpacing: 0.3,
   },
   quickTagsContainer: {
     flexDirection: "row",
@@ -841,15 +792,19 @@ const styles = StyleSheet.create({
   },
   quickTag: {
     borderRadius: theme.borderRadius.full,
+    overflow: "hidden",
+    ...theme.shadows.sm,
   },
-  quickTagGradient: {
+  quickTagContainer: {
     paddingHorizontal: theme.spacing.md,
     paddingVertical: theme.spacing.sm,
     borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.surface,
   },
   quickTagText: {
-    ...theme.typography.caption,
+    fontSize: 14,
     color: theme.colors.textSecondary,
     fontWeight: "500",
+    letterSpacing: 0.3,
   },
 });

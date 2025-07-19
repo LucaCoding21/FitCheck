@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   TextInput,
@@ -7,16 +7,38 @@ import {
   StyleSheet,
   Keyboard,
   Alert,
+  Pressable,
+  Image,
 } from "react-native";
 import { doc, updateDoc, arrayUnion, getDoc } from "firebase/firestore";
 import { db } from "../config/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { theme } from "../styles/theme";
 
-export default function CommentInput({ fitId, onCommentAdded }) {
+export default function CommentInput({ fitId, onCommentAdded, placeholder = "Add a comment..." }) {
   const { user } = useAuth();
   const [commentText, setCommentText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [userProfileImageURL, setUserProfileImageURL] = useState(null);
+
+  // Fetch user profile image on component mount
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      if (user) {
+        try {
+          const userDoc = await getDoc(doc(db, "users", user.uid));
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            setUserProfileImageURL(userData.profileImageURL || null);
+          }
+        } catch (error) {
+          console.error("Error fetching user profile:", error);
+        }
+      }
+    };
+
+    fetchUserProfile();
+  }, [user]);
 
   const handleSubmitComment = async () => {
     if (!commentText.trim()) return;
@@ -27,7 +49,6 @@ export default function CommentInput({ fitId, onCommentAdded }) {
     if (isSubmitting) return; // Prevent double submission
 
     setIsSubmitting(true);
-    Keyboard.dismiss();
 
     try {
       // Get user data for the comment
@@ -38,7 +59,7 @@ export default function CommentInput({ fitId, onCommentAdded }) {
         id: `${user.uid}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         text: commentText.trim(),
         userId: user.uid,
-        userName: userData.name || userData.displayName || "User",
+        userName: userData.username || userData.displayName || userData.name || "User",
         userProfileImageURL: userData.profileImageURL || null,
         timestamp: new Date(),
       };
@@ -56,6 +77,9 @@ export default function CommentInput({ fitId, onCommentAdded }) {
         onCommentAdded(newComment);
       }
       
+      // Dismiss keyboard after successful send
+      Keyboard.dismiss();
+      
       // Small delay to prevent rapid submissions
       setTimeout(() => {
         setIsSubmitting(false);
@@ -70,12 +94,30 @@ export default function CommentInput({ fitId, onCommentAdded }) {
   const isSubmitDisabled = !commentText.trim() || isSubmitting;
 
   return (
-    <View style={styles.container}>
-      <View style={styles.inputContainer}>
+    <View style={styles.inputContainer}>
+      {/* User Avatar */}
+      <View style={styles.userAvatar}>
+        {userProfileImageURL ? (
+          <Image 
+            source={{ uri: userProfileImageURL }} 
+            style={styles.avatarImage}
+            defaultSource={require('../../assets/icon.png')}
+          />
+        ) : (
+          <View style={styles.avatarPlaceholder}>
+            <Text style={styles.avatarText}>
+              {(user?.displayName || user?.email || "User").charAt(0).toUpperCase()}
+            </Text>
+          </View>
+        )}
+      </View>
+
+      {/* Input Field */}
+      <View style={styles.inputFieldContainer}>
         <TextInput
           style={styles.textInput}
-          placeholder="Add a comment..."
-          placeholderTextColor={theme.colors.textMuted}
+          placeholder={placeholder}
+          placeholderTextColor="#71717A"
           value={commentText}
           onChangeText={setCommentText}
           multiline
@@ -83,67 +125,95 @@ export default function CommentInput({ fitId, onCommentAdded }) {
           blurOnSubmit={false}
           onSubmitEditing={handleSubmitComment}
         />
-        <TouchableOpacity
-          style={[
-            styles.sendButton,
-            isSubmitDisabled && styles.sendButtonDisabled,
-          ]}
-          onPress={handleSubmitComment}
-          disabled={isSubmitDisabled}
-        >
-          <Text
-            style={[
-              styles.sendButtonText,
-              isSubmitDisabled && styles.sendButtonTextDisabled,
-            ]}
-          >
-            {isSubmitting ? "..." : "Send"}
-          </Text>
-        </TouchableOpacity>
       </View>
+
+      {/* Send Button */}
+      <Pressable
+        style={({ pressed }) => [
+          styles.sendButton,
+          isSubmitDisabled && styles.sendButtonDisabled,
+          pressed && { opacity: 0.8 }
+        ]}
+        onPress={handleSubmitComment}
+        disabled={isSubmitting}
+        android_ripple={{ color: 'rgba(255, 255, 255, 0.1)', borderless: false }}
+      >
+        <Text
+          style={[
+            styles.sendButtonText,
+            isSubmitDisabled && styles.sendButtonTextDisabled,
+          ]}
+        >
+          {isSubmitting ? "..." : "Send"}
+        </Text>
+      </Pressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    padding: theme.spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255, 255, 255, 0.1)",
-    backgroundColor: theme.colors.surface,
-  },
   inputContainer: {
     flexDirection: "row",
     alignItems: "flex-end",
-    backgroundColor: theme.colors.background,
-    borderRadius: theme.borderRadius.lg,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 10,
+  },
+  userAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: '#2A2A2A',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 16,
+  },
+  avatarPlaceholder: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 16,
+    backgroundColor: '#2A2A2A',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarText: {
+    fontSize: 14,
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+  inputFieldContainer: {
+    flex: 1,
+    backgroundColor: '#2A2A2A',
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.1)",
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.xs,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    overflow: 'hidden',
   },
   textInput: {
-    flex: 1,
-    ...theme.typography.body,
-    color: theme.colors.text,
-    paddingVertical: theme.spacing.sm,
-    paddingHorizontal: theme.spacing.sm,
-    maxHeight: 100,
+    fontSize: 15,
+    color: '#FFFFFF',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    maxHeight: 80,
     textAlignVertical: "top",
   },
   sendButton: {
-    backgroundColor: theme.colors.primary,
-    borderRadius: theme.borderRadius.md,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    marginLeft: theme.spacing.sm,
+    backgroundColor: '#B5483D',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    minWidth: 50,
+    alignItems: 'center',
   },
   sendButtonDisabled: {
-    backgroundColor: theme.colors.textMuted,
+    backgroundColor: '#666666',
   },
   sendButtonText: {
-    ...theme.typography.small,
-    color: theme.colors.text,
+    fontSize: 13,
+    color: '#FFFFFF',
     fontWeight: "600",
   },
   sendButtonTextDisabled: {

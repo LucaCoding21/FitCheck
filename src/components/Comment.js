@@ -1,6 +1,5 @@
 import React from "react";
 import { View, Text, Image, StyleSheet } from "react-native";
-import { theme } from "../styles/theme";
 
 export default function Comment({ comment }) {
   const formatTimeAgo = (date) => {
@@ -59,28 +58,28 @@ export default function Comment({ comment }) {
 const styles = StyleSheet.create({
   container: {
     flexDirection: "row",
-    paddingVertical: theme.spacing.sm,
-    paddingHorizontal: theme.spacing.md,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
   },
   avatar: {
     width: 32,
     height: 32,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.primary,
+    borderRadius: 16,
+    backgroundColor: '#2A2A2A',
     justifyContent: "center",
     alignItems: "center",
-    marginRight: theme.spacing.sm,
+    marginRight: 12,
     overflow: "hidden",
   },
   avatarImage: {
     width: "100%",
     height: "100%",
-    borderRadius: theme.borderRadius.full,
+    borderRadius: 16,
   },
   avatarText: {
-    ...theme.typography.small,
-    color: theme.colors.text,
-    fontWeight: "700",
+    fontSize: 14,
+    color: '#FFFFFF',
+    fontWeight: "600",
   },
   commentContent: {
     flex: 1,
@@ -88,22 +87,21 @@ const styles = StyleSheet.create({
   commentHeader: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: theme.spacing.xs,
+    marginBottom: 4,
   },
   username: {
-    ...theme.typography.small,
-    color: theme.colors.text,
+    fontSize: 14,
+    color: '#FFFFFF',
     fontWeight: "600",
-    marginRight: theme.spacing.sm,
+    marginRight: 8,
   },
   timestamp: {
-    ...theme.typography.small,
-    color: theme.colors.textMuted,
     fontSize: 12,
+    color: '#71717A',
   },
   commentText: {
-    ...theme.typography.body,
-    color: theme.colors.textSecondary,
-    lineHeight: 18,
+    fontSize: 15,
+    color: '#FFFFFF',
+    lineHeight: 20,
   },
 }); 

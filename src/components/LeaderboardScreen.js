@@ -14,6 +14,28 @@ import { db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { theme } from '../styles/theme';
 
+// Helper function to calculate display rating with fallback
+const calculateDisplayRating = (fit) => {
+  // If fairRating exists and is not 0, use it
+  if (fit.fairRating && fit.fairRating > 0) {
+    return fit.fairRating.toFixed(1);
+  }
+  
+  // Fallback: calculate from ratings object
+  if (fit.ratings && Object.keys(fit.ratings).length > 0) {
+    const ratings = Object.values(fit.ratings)
+      .filter(r => r && typeof r.rating === 'number')
+      .map(r => r.rating);
+    
+    if (ratings.length > 0) {
+      const average = ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length;
+      return Math.round(average * 10) / 10;
+    }
+  }
+  
+  return '0.0';
+};
+
 // Helper function to get leaderboard fits
 export const getLeaderboardFits = async (groupId) => {
   try {
@@ -43,10 +65,28 @@ export const getLeaderboardFits = async (groupId) => {
       return fitDate && fitDate >= today && fitDate < tomorrow;
     });
 
+    console.log(`[Leaderboard] Total fits for group ${groupId}:`, fits.length);
+    console.log(`[Leaderboard] Today's fits:`, todayFits.length);
+    console.log(`[Leaderboard] Today's fits details:`, todayFits.map(fit => ({
+      id: fit.id,
+      ratingCount: fit.ratingCount,
+      fairRating: fit.fairRating,
+      ratings: fit.ratings,
+      userName: fit.userName
+    })));
+
     const eligibleFits = todayFits
       .filter(fit => (fit.ratingCount || 0) >= 3)
       .sort((a, b) => (b.fairRating || 0) - (a.fairRating || 0))
       .slice(0, 3);
+
+    console.log(`[Leaderboard] Eligible fits (3+ ratings):`, eligibleFits.length);
+    console.log(`[Leaderboard] Final leaderboard:`, eligibleFits.map(fit => ({
+      id: fit.id,
+      ratingCount: fit.ratingCount,
+      fairRating: fit.fairRating,
+      userName: fit.userName
+    })));
 
     return eligibleFits;
   } catch (error) {
@@ -150,9 +190,9 @@ export default function LeaderboardScreen({ navigation, route }) {
 
         {/* Fit Image */}
         <View style={styles.imageContainer}>
-          {item.imageUrl ? (
+          {item.imageURL ? (
             <Image
-              source={{ uri: item.imageUrl }}
+              source={{ uri: item.imageURL }}
               style={styles.fitImage}
               resizeMode="cover"
             />
@@ -171,7 +211,7 @@ export default function LeaderboardScreen({ navigation, route }) {
           </Text>
           <View style={styles.ratingContainer}>
             <Text style={styles.ratingText}>
-              {item.fairRating ? item.fairRating.toFixed(1) : '0.0'}
+              {calculateDisplayRating(item)}
             </Text>
             <Text style={styles.ratingLabel}>★</Text>
             <Text style={styles.ratingCount}>

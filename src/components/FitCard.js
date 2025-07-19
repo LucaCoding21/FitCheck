@@ -5,35 +5,44 @@ import {
   Image,
   TouchableOpacity,
   StyleSheet,
-  Animated,
   Alert,
-  ScrollView,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { doc, updateDoc, getDoc } from "firebase/firestore";
 import { db } from "../config/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { theme } from "../styles/theme";
-import Comment from "./Comment";
-import CommentInput from "./CommentInput";
 
-export default function FitCard({ fit, onCommentSectionOpen }) {
+export default function FitCard({ fit, onCommentSectionOpen, onOpenCommentModal }) {
   const { user } = useAuth();
   const [userRating, setUserRating] = useState(
     fit.ratings?.[user?.uid]?.rating || null
   );
   const [hoverRating, setHoverRating] = useState(0);
-  const [animatedValues] = useState(
-    Array(5).fill().map(() => new Animated.Value(1))
-  );
   const [groupRatings, setGroupRatings] = useState({});
   const [fairRating, setFairRating] = useState(fit.fairRating || 0);
+  const [ratingCount, setRatingCount] = useState(fit.ratingCount || 0);
   const [userGroups, setUserGroups] = useState([]);
-  const [showComments, setShowComments] = useState(false);
   const [comments, setComments] = useState(fit.comments || []);
+  const [groupName, setGroupName] = useState("");
+  const [userData, setUserData] = useState(null);
 
   useEffect(() => {
     calculateFairRating();
     fetchUserGroups();
+    setRatingCount(fit.ratingCount || 0);
+    // Use the user data that's already stored in the fit document
+    if (fit.userName || fit.userProfileImageURL) {
+      setUserData({
+        username: fit.userName,
+        displayName: fit.userName,
+        profileImageURL: fit.userProfileImageURL,
+        email: fit.userEmail
+      });
+    } else {
+      // Fallback to fetching from users collection if data not in fit
+      fetchUserData();
+    }
   }, [fit]);
 
   // Separate useEffect for comments to avoid conflicts with real-time updates
@@ -41,11 +50,27 @@ export default function FitCard({ fit, onCommentSectionOpen }) {
     if (fit.comments && Array.isArray(fit.comments)) {
       // Deduplicate comments by ID to prevent duplicates
       const uniqueComments = fit.comments.filter((comment, index, self) => 
-        index === self.findIndex(c => c.id === comment.id)
+        comment && comment.id && index === self.findIndex(c => c && c.id === comment.id)
       );
       setComments(uniqueComments);
+    } else {
+      setComments([]);
     }
   }, [fit.comments]);
+
+  const fetchUserData = async () => {
+    try {
+      if (fit.userId) {
+        const userDoc = await getDoc(doc(db, "users", fit.userId));
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          setUserData(userData);
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching user data:", error);
+    }
+  };
 
   const fetchUserGroups = async () => {
     try {
@@ -65,121 +90,114 @@ export default function FitCard({ fit, onCommentSectionOpen }) {
       return;
     }
 
-    // Group ratings by groupId
-    const ratingsByGroup = {};
-    const groupDetails = {};
-
-    // Process each rating
-    Object.entries(fit.ratings).forEach(([userId, ratingData]) => {
-      const { rating, groupId, timestamp } = ratingData;
-      
-      if (!ratingsByGroup[groupId]) {
-        ratingsByGroup[groupId] = [];
-        groupDetails[groupId] = { name: "Unknown Group", memberCount: 0 };
-      }
-      
-      ratingsByGroup[groupId].push(rating);
-    });
-
-    // Calculate average rating per group
-    const groupAverages = Object.entries(ratingsByGroup).map(([groupId, ratings]) => {
-      const average = ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length;
-      return { groupId, average, count: ratings.length };
-    });
-
-    // Calculate fair rating (average of group averages)
-    if (groupAverages.length > 0) {
-      const totalAverage = groupAverages.reduce((sum, group) => sum + group.average, 0);
-      const fairRatingValue = totalAverage / groupAverages.length;
-      setFairRating(fairRatingValue);
-      setGroupRatings(groupAverages);
+    const ratings = Object.values(fit.ratings)
+      .filter(r => r && typeof r.rating === 'number')
+      .map(r => r.rating);
+    
+    if (ratings.length === 0) {
+      setFairRating(0);
+      return;
     }
+    
+    const average = ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length;
+    setFairRating(Math.round(average * 10) / 10);
   };
 
-  const animateStar = (index) => {
-    Animated.sequence([
-      Animated.timing(animatedValues[index], {
-        toValue: 1.3,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-      Animated.timing(animatedValues[index], {
-        toValue: 1,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-    ]).start();
+  // Calculate fair rating with immediate user rating update
+  const calculateFairRatingWithUserRating = (userRatingValue) => {
+    if (!fit.ratings || Object.keys(fit.ratings).length === 0) {
+      return userRatingValue || 0;
+    }
+
+    // Create a copy of ratings and add/update the user's rating
+    const ratingsCopy = { ...fit.ratings };
+    if (userRatingValue) {
+      ratingsCopy[user.uid] = { rating: userRatingValue, timestamp: new Date() };
+    }
+
+    const ratings = Object.values(ratingsCopy)
+      .filter(r => r && typeof r.rating === 'number')
+      .map(r => r.rating);
+    
+    if (ratings.length === 0) {
+      return userRatingValue || 0;
+    }
+    
+    const average = ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length;
+    return Math.round(average * 10) / 10;
   };
 
   const rateFit = async (rating) => {
-    if (!user || fit.userId === user.uid) return;
+    if (!user) {
+      Alert.alert("Error", "You must be logged in to rate fits.");
+      return;
+    }
 
-    // Animate all stars up to the selected rating
-    for (let i = 0; i < rating; i++) {
-      setTimeout(() => animateStar(i), i * 50);
+    // Check if user is trying to rate their own fit
+    if (fit.userId === user.uid) {
+      Alert.alert("Cannot Rate Own Fit", "You cannot rate your own fit.");
+      return;
     }
 
     try {
-      const fitRef = doc(db, "fits", fit.id);
-      const previousRating = userRating;
-
-      // Update local state immediately
+      // Update local state immediately for better UX
       setUserRating(rating);
-
-      // Get user's current group context
-      const currentGroupId = fit.groupIds?.[0] || "default"; // Use first group for now
       
-      // Create rating data with group context
-      const ratingData = {
-        rating,
-        groupId: currentGroupId,
-        timestamp: new Date(),
-        userId: user.uid
-      };
+      // Update fair rating immediately with new user rating
+      const newFairRating = calculateFairRatingWithUserRating(rating);
+      setFairRating(newFairRating);
+      
+      // Check if this is a new rating or updating existing rating
+      const existingRating = fit.ratings?.[user.uid];
+      const isNewRating = !existingRating;
+      
+      // Update rating count if this is a new rating
+      if (isNewRating) {
+        setRatingCount(prev => prev + 1);
+      }
 
-      // Calculate new fair rating
-      let newRatings = { ...fit.ratings };
-      newRatings[user.uid] = ratingData;
-
-      // Recalculate fair rating
-      const ratingsByGroup = {};
-      Object.values(newRatings).forEach((ratingData) => {
-        const { rating, groupId } = ratingData;
-        if (!ratingsByGroup[groupId]) {
-          ratingsByGroup[groupId] = [];
-        }
-        ratingsByGroup[groupId].push(rating);
-      });
-
-      const groupAverages = Object.values(ratingsByGroup).map(ratings => 
-        ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length
-      );
-
-      const newFairRating = groupAverages.reduce((sum, avg) => sum + avg, 0) / groupAverages.length;
-      const newRatingCount = Object.keys(newRatings).length;
-
-      // Update Firestore
+      // Update the fit document
+      const fitRef = doc(db, "fits", fit.id);
+      
+      // Calculate new rating count
+      const currentRatingCount = fit.ratingCount || 0;
+      const newRatingCount = isNewRating ? currentRatingCount + 1 : currentRatingCount;
+      
       await updateDoc(fitRef, {
-        ratings: newRatings,
-        fairRating: newFairRating,
+        [`ratings.${user.uid}`]: {
+          rating: rating,
+          timestamp: new Date(),
+        },
         ratingCount: newRatingCount,
+        fairRating: newFairRating,
         lastUpdated: new Date(),
       });
 
-      // Update local state
-      setFairRating(newFairRating);
-      
     } catch (error) {
       console.error("Error rating fit:", error);
       Alert.alert("Error", "Failed to rate fit. Please try again.");
       // Revert local state on error
-      setUserRating(previousRating);
+      setUserRating(fit.ratings?.[user?.uid]?.rating || null);
+      calculateFairRating(); // Recalculate without user rating
     }
   };
 
   const formatTimeAgo = (date) => {
+    if (!date) return "Just now";
+    
     const now = new Date();
-    const diffInMinutes = Math.floor((now - date.toDate()) / (1000 * 60));
+    let commentDate;
+    
+    // Handle both Firestore Timestamp and regular Date objects
+    if (date.toDate && typeof date.toDate === 'function') {
+      commentDate = date.toDate();
+    } else if (date instanceof Date) {
+      commentDate = date;
+    } else {
+      commentDate = new Date(date);
+    }
+    
+    const diffInMinutes = Math.floor((now - commentDate) / (1000 * 60));
 
     if (diffInMinutes < 1) return "Just now";
     if (diffInMinutes === 1) return "1 min ago";
@@ -189,8 +207,6 @@ export default function FitCard({ fit, onCommentSectionOpen }) {
     if (diffInHours === 1) return "1 hour ago";
     return `${diffInHours} hours ago`;
   };
-
-  const [groupName, setGroupName] = useState("");
 
   const getGroupName = async (groupId) => {
     if (!groupId) return "";
@@ -225,92 +241,135 @@ export default function FitCard({ fit, onCommentSectionOpen }) {
     // This prevents duplicate comments when the fit prop updates
   };
 
-  const toggleComments = () => {
-    const newShowComments = !showComments;
-    setShowComments(newShowComments);
+  const openCommentModal = () => {
+    // Notify parent component to open the modal
+    if (onOpenCommentModal) {
+      onOpenCommentModal(fit, comments);
+    }
     
-    // If comments are being opened, trigger scroll to this card
-    if (newShowComments && onCommentSectionOpen) {
+    // Trigger scroll to this card
+    if (onCommentSectionOpen) {
       onCommentSectionOpen(fit.id);
     }
   };
 
   const renderStars = (rating, size = 16, interactive = false, onStarPress = null) => {
-    const stars = [];
-    const displayRating = interactive ? (hoverRating || userRating || 0) : rating;
-    
-    for (let i = 1; i <= 5; i++) {
-      const isFilled = i <= displayRating;
+    return Array(5).fill().map((_, index) => {
+      const starValue = index + 1;
+      const isFilled = starValue <= rating;
+      const isHovered = interactive && starValue <= hoverRating;
       
-      stars.push(
-        <TouchableOpacity
-          key={i}
-          onPress={interactive ? () => onStarPress(i) : undefined}
-          onPressIn={interactive ? () => setHoverRating(i) : undefined}
-          onPressOut={interactive ? () => setHoverRating(0) : undefined}
-          disabled={!interactive || !user || fit.userId === user.uid}
-          style={styles.starButton}
-        >
-          <Animated.Text
-            style={[
-              styles.star,
-              { fontSize: size },
-              isFilled ? styles.starFilled : styles.starEmpty,
-              interactive && { transform: [{ scale: animatedValues[i - 1] }] }
-            ]}
+      const baseStyle = [
+        styles.star,
+        { fontSize: size },
+        isFilled || isHovered ? styles.starFilled : styles.starEmpty,
+      ];
+
+      if (interactive) {
+        return (
+          <TouchableOpacity
+            key={index}
+            style={styles.starButton}
+            onPress={() => onStarPress && onStarPress(starValue)}
+            onPressIn={() => setHoverRating(starValue)}
+            onPressOut={() => setHoverRating(0)}
           >
-            ★
-          </Animated.Text>
-        </TouchableOpacity>
+            <Text style={baseStyle}>★</Text>
+          </TouchableOpacity>
+        );
+      }
+
+      return (
+        <Text key={index} style={baseStyle}>
+          ★
+        </Text>
       );
-    }
-    return stars;
+    });
   };
+
+  // Get user display info with fallbacks
+  const getUserDisplayName = () => {
+    if (userData?.username) {
+      return userData.username;
+    }
+    if (userData?.displayName) {
+      return userData.displayName;
+    }
+    if (userData?.email) {
+      return userData.email.split('@')[0];
+    }
+    // Fallback to fit data if userData is not available
+    if (fit.userName) {
+      return fit.userName;
+    }
+    return "User";
+  };
+
+  const getUserProfileImage = () => {
+    if (userData?.profileImageURL) return userData.profileImageURL;
+    // Fallback to fit data if userData is not available
+    if (fit.userProfileImageURL) return fit.userProfileImageURL;
+    return null;
+  };
+
+
+
+  // Loading state for user profile - only show if we have no user data at all
+  if (!userData && !fit.userName && !fit.userProfileImageURL) {
+    return (
+      <View style={[styles.container, { alignItems: 'center', justifyContent: 'center', minHeight: 200 }]}> 
+        <Text style={{ color: '#fff', opacity: 0.5 }}>Loading user...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
-      {/* User Information Header */}
+      {/* Header */}
       <View style={styles.header}>
         <View style={styles.userInfo}>
-          <View style={styles.avatar}>
-            {fit.userProfileImageURL ? (
-              <Image 
-                source={{ uri: fit.userProfileImageURL }} 
-                style={styles.avatarImage}
-                defaultSource={require('../../assets/icon.png')}
-              />
-            ) : (
+          {getUserProfileImage() ? (
+            <Image
+              source={{ uri: getUserProfileImage() }}
+              style={styles.avatarImage}
+              defaultSource={require("../../assets/icon.png")}
+            />
+          ) : (
+            <View style={styles.avatar}>
               <Text style={styles.avatarText}>
-                {(fit.userName || "User").charAt(0).toUpperCase()}
+                {getUserDisplayName().charAt(0).toUpperCase()}
               </Text>
-            )}
-          </View>
+            </View>
+          )}
           <View style={styles.userDetails}>
-            <Text style={styles.username}>{fit.userName || "lucailliam"}</Text>
+            <Text style={styles.username}>
+              {getUserDisplayName()}
+            </Text>
             <Text style={styles.timestamp}>
-              {formatTimeAgo(fit.createdAt)} • {groupName}
+              {formatTimeAgo(fit.createdAt || fit.timestamp)} • {groupName}
             </Text>
           </View>
         </View>
-
-        {/* Rating Display */}
-        {fairRating > 0 && (
-          <View style={styles.headerRating}>
-            <Text style={styles.starIcon}>★</Text>
-            <Text style={styles.ratingText}>
-              {fairRating.toFixed(1)} ({fit.ratingCount || 0})
+        <View style={styles.headerRating}>
+          <Text style={styles.starIcon}>★</Text>
+          <Text style={styles.ratingText}>
+            {fairRating.toFixed(1)} 
+            <Text style={styles.ratingCount}>
+              ({ratingCount})
             </Text>
-          </View>
-        )}
+          </Text>
+        </View>
       </View>
 
-      {/* Post Content */}
-      {fit.caption && (
+      {/* Caption */}
+      {(fit.caption || fit.tag) && (
         <View style={styles.contentSection}>
-          <Text style={styles.caption}>{fit.caption}</Text>
-          {fit.hashtags && fit.hashtags.length > 0 && (
+          {fit.caption && (
+            <Text style={styles.caption}>{fit.caption}</Text>
+          )}
+          {fit.tag && (
             <Text style={styles.hashtags}>
-              {fit.hashtags.map(tag => `#${tag}`).join(' ')}
+              {fit.tag.split(/[,\s]+/).filter(tag => tag.trim()).map(tag => `#${tag.trim()}`).join(' ')}
             </Text>
           )}
         </View>
@@ -318,51 +377,50 @@ export default function FitCard({ fit, onCommentSectionOpen }) {
 
       {/* Main Image */}
       <View style={styles.imageContainer}>
-        <Image source={{ uri: fit.imageUrl }} style={styles.image} />
+        <Image source={{ uri: fit.imageURL }} style={styles.image} />
       </View>
 
       {/* Rate The Fit Section */}
       <View style={styles.rateSection}>
-        <Text style={styles.rateTitle}>Rate The Fit</Text>
-        <View style={styles.starsContainer}>
-          {renderStars(0, 24, true, rateFit)}
-        </View>
-      </View>
-
-      {/* Comments Section */}
-      <View style={styles.commentsSection}>
-        <TouchableOpacity 
-          style={styles.commentsHeader} 
-          onPress={toggleComments}
-        >
-          <Text style={styles.commentsCount}>
-            {comments.length} Comment{comments.length !== 1 ? 's' : ''}
-          </Text>
-          <Text style={styles.commentsToggle}>
-            {showComments ? '▼' : '▼'}
-          </Text>
-        </TouchableOpacity>
-
-        {showComments && (
+        {fit.userId === user?.uid ? (
+          // User's own fit - show rating info only
+          <View style={styles.ownFitSection}>
+            <Text style={styles.rateTitle}>Your Fit Rating</Text>
+            <View style={styles.starsContainer}>
+              {renderStars(fairRating, 32, false)}
+            </View>
+            <Text style={styles.ratingFeedback}>
+              Average: {fairRating.toFixed(1)} stars ({ratingCount} ratings)
+            </Text>
+          </View>
+        ) : (
+          // Other user's fit - show interactive rating
           <>
-            {comments.length > 0 && (
-              <ScrollView 
-                style={styles.commentsList}
-                showsVerticalScrollIndicator={false}
-                nestedScrollEnabled={true}
-              >
-                {comments.slice(0, 1).map((comment, index) => (
-                  <Comment key={`${fit.id}_${comment.id || `comment_${index}_${comment.userId || 'unknown'}`}`} comment={comment} />
-                ))}
-              </ScrollView>
+            <Text style={styles.rateTitle}>Rate The Fit</Text>
+            <View style={styles.starsContainer}>
+              {renderStars(userRating || 0, 32, true, rateFit)}
+            </View>
+            {userRating && (
+              <Text style={styles.ratingFeedback}>
+                You rated this fit {userRating} star{userRating !== 1 ? 's' : ''}
+              </Text>
             )}
-            
-            <CommentInput 
-              fitId={fit.id} 
-              onCommentAdded={handleCommentAdded}
-            />
           </>
         )}
+      </View>
+
+      {/* Comment Section */}
+      <View style={styles.actionSection}>
+        <TouchableOpacity 
+          style={styles.commentButton}
+          onPress={openCommentModal}
+          activeOpacity={0.6}
+        >
+          <Ionicons name="chatbubble-outline" size={24} color="#FFFFFF" style={styles.commentIcon} />
+          <Text style={styles.commentText}>
+            {comments.length}
+          </Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -371,12 +429,10 @@ export default function FitCard({ fit, onCommentSectionOpen }) {
 const styles = StyleSheet.create({
   container: {
     backgroundColor: '#2A2A2A',
-    paddingLeft: 0.25,
-    paddingRight: 2,
+    paddingHorizontal: 16,
     borderRadius: 12,
     marginBottom: 16,
-    marginHorizontal: 1,
-    overflow: 'hidden',
+    marginHorizontal: 8,
   },
 
   // Header styles
@@ -384,7 +440,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+    paddingVertical: 16,
     paddingBottom: 12,
   },
   userInfo: {
@@ -400,11 +456,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
-    overflow: 'hidden',
   },
   avatarImage: {
-    width: '100%',
-    height: '100%',
+    width: 40,
+    height: 40,
     borderRadius: 20,
   },
   avatarText: {
@@ -414,23 +469,28 @@ const styles = StyleSheet.create({
   },
   userDetails: {
     flex: 1,
+    justifyContent: 'center',
   },
   username: {
     fontSize: 16,
     color: '#FFFFFF',
     fontWeight: '600',
     marginBottom: 2,
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
   timestamp: {
     fontSize: 14,
     color: '#71717A',
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
   headerRating: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   starIcon: {
-    fontSize: 16,
+    fontSize: 20,
     color: '#FFD700',
     marginRight: 4,
   },
@@ -439,10 +499,14 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '600',
   },
+  ratingCount: {
+    fontSize: 14,
+    color: '#71717A',
+    fontWeight: '400',
+  },
 
   // Content section
   contentSection: {
-    paddingHorizontal: 16,
     paddingBottom: 12,
   },
   caption: {
@@ -453,13 +517,13 @@ const styles = StyleSheet.create({
   },
   hashtags: {
     fontSize: 16,
-    color: '#B5483D',
-    fontWeight: '600',
+    color: '#FF6B6B',
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
 
   // Image styles
   imageContainer: {
-    marginHorizontal: 16,
     marginBottom: 16,
   },
   image: {
@@ -470,8 +534,10 @@ const styles = StyleSheet.create({
 
   // Rate section
   rateSection: {
-    paddingHorizontal: 16,
     paddingBottom: 16,
+    alignItems: 'center',
+  },
+  ownFitSection: {
     alignItems: 'center',
   },
   rateTitle: {
@@ -497,29 +563,35 @@ const styles = StyleSheet.create({
   starEmpty: {
     color: '#71717A',
   },
+  ratingFeedback: {
+    fontSize: 14,
+    color: '#71717A',
+    marginTop: 8,
+    fontStyle: 'italic',
+  },
 
-  // Comments styles
-  commentsSection: {
+  // Comment section styles
+  actionSection: {
+    paddingVertical: 12,
     borderTopWidth: 1,
     borderTopColor: 'rgba(255, 255, 255, 0.1)',
   },
-  commentsHeader: {
+  commentButton: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
-    paddingBottom: 12,
+    padding: 8,
+    minWidth: 60,
   },
-  commentsCount: {
-    fontSize: 16,
+  commentIcon: {
+    marginRight: 8,
+  },
+  commentButtonPressed: {
+    opacity: 0.7,
+  },
+  commentText: {
+    fontSize: 14,
     color: '#FFFFFF',
     fontWeight: '600',
-  },
-  commentsToggle: {
-    fontSize: 16,
-    color: '#71717A',
-  },
-  commentsList: {
-    maxHeight: 200,
+    marginLeft: 1,
   },
 });

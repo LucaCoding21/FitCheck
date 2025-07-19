@@ -111,7 +111,7 @@ export default function NotificationsScreen({ isVisible, onClose, onNavigateToFi
             const notificationsWithContext = otherComments.map(comment => ({
               ...comment,
               fitId: fit.id,
-              fitImageUrl: fit.imageUrl,
+              fitImageUrl: fit.imageURL,
               fitCaption: fit.caption,
               fitCreatedAt: fit.createdAt,
             }));

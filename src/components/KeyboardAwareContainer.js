@@ -14,16 +14,19 @@ const KeyboardAwareContainer = ({
     }
   };
 
-  const ContainerComponent = dismissKeyboardOnTap ? TouchableWithoutFeedback : View;
-  const containerProps = dismissKeyboardOnTap ? { onPress: handleScreenTap } : {};
-
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      <ContainerComponent {...containerProps}>
+      {dismissKeyboardOnTap ? (
+        <TouchableWithoutFeedback onPress={handleScreenTap}>
+          <View style={[{ flex: 1 }, style]} {...props}>
+            {children}
+          </View>
+        </TouchableWithoutFeedback>
+      ) : (
         <View style={[{ flex: 1 }, style]} {...props}>
           {children}
         </View>
-      </ContainerComponent>
+      )}
     </SafeAreaView>
   );
 };

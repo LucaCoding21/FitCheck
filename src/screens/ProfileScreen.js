@@ -73,7 +73,21 @@ const formatRating = (fit) => {
     return 'Not yet rated';
   }
   
-  const rating = fit.fairRating || 0;
+  // Try to use fairRating first, with fallback calculation
+  let rating = fit.fairRating || 0;
+  
+  // If fairRating is 0 or missing, calculate from ratings object
+  if (rating === 0 && fit.ratings && Object.keys(fit.ratings).length > 0) {
+    const ratings = Object.values(fit.ratings)
+      .filter(r => r && typeof r.rating === 'number')
+      .map(r => r.rating);
+    
+    if (ratings.length > 0) {
+      rating = ratings.reduce((sum, r) => sum + r, 0) / ratings.length;
+      rating = Math.round(rating * 10) / 10; // Round to 1 decimal place
+    }
+  }
+  
   return `${rating.toFixed(1)} ★ (${fit.ratingCount} ratings)`;
 };
 
@@ -112,6 +126,13 @@ export default function ProfileScreen({ navigation }) {
     setLoading(true);
     try {
       const fits = await getMyFits(user.uid);
+      console.log('[Profile] Fetched fits:', fits.map(fit => ({
+        id: fit.id,
+        ratingCount: fit.ratingCount,
+        fairRating: fit.fairRating,
+        ratings: fit.ratings,
+        caption: fit.caption
+      })));
       setMyFits(fits);
     } catch (error) {
       console.error('Error fetching my fits:', error);
@@ -133,9 +154,9 @@ export default function ProfileScreen({ navigation }) {
       >
         {/* Fit Image */}
         <View style={styles.imageContainer}>
-          {item.imageUrl ? (
+          {item.imageURL ? (
             <Image
-              source={{ uri: item.imageUrl }}
+              source={{ uri: item.imageURL }}
               style={styles.fitImage}
               resizeMode="cover"
             />

@@ -1,26 +1,26 @@
-// Modern Dark Theme with Electric Blue/Purple Accents
+// Modern Dark Theme with Red/Gold Accents (User's Preferred Style)
 export const theme = {
   colors: {
     // Dark backgrounds
-    background: "#0A0A0F",
-    surface: "#1A1A24",
-    card: "#252530",
+    background: "#1a1a1a",
+    surface: "#2A2A2A",
+    card: "#121212",
 
-    // Electric gradients
-    primary: "#6366F1", // Electric blue
-    secondary: "#8B5CF6", // Electric purple
-    accent: "#06FFA5", // Neon green
+    // Primary colors (user's preferred)
+    primary: "#B5483D", // Red/burgundy
+    secondary: "#CD9F3E", // Golden star
+    accent: "#B5483D", // Red accent
 
-    // Gradients
-    primaryGradient: ["#6366F1", "#8B5CF6"],
-    accentGradient: ["#06FFA5", "#00D4AA"],
-    cardGradient: ["#252530", "#1E1E28"],
-    surfaceGradient: ["#1A1A24", "#252530"],
+    // Gradients (minimal use as user prefers)
+    primaryGradient: ["#B5483D", "#A03A30"],
+    accentGradient: ["#CD9F3E", "#B89030"],
+    cardGradient: ["#2A2A2A", "#1a1a1a"],
+    surfaceGradient: ["#2A2A2A", "#1a1a1a"],
     dangerGradient: ["#EF4444", "#DC2626"],
 
     // Text
     text: "#FFFFFF",
-    textSecondary: "#A1A1AA",
+    textSecondary: "#CCCCCC",
     textMuted: "#71717A",
 
     // Status colors
@@ -35,7 +35,7 @@ export const theme = {
 
     // Overlays
     overlay: "rgba(0, 0, 0, 0.7)",
-    cardOverlay: "rgba(37, 37, 48, 0.8)",
+    cardOverlay: "rgba(42, 42, 42, 0.8)",
   },
 
   spacing: {
@@ -64,21 +64,21 @@ export const theme = {
       elevation: 2,
     },
     md: {
-      shadowColor: "#6366F1",
+      shadowColor: "#B5483D",
       shadowOffset: { width: 0, height: 4 },
       shadowOpacity: 0.15,
       shadowRadius: 8,
       elevation: 4,
     },
     lg: {
-      shadowColor: "#8B5CF6",
+      shadowColor: "#B5483D",
       shadowOffset: { width: 0, height: 8 },
       shadowOpacity: 0.2,
       shadowRadius: 16,
       elevation: 8,
     },
     glow: {
-      shadowColor: "#06FFA5",
+      shadowColor: "#CD9F3E",
       shadowOffset: { width: 0, height: 0 },
       shadowOpacity: 0.3,
       shadowRadius: 12,

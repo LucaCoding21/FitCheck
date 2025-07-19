@@ -7,6 +7,7 @@ import { signOut } from 'firebase/auth';
 import { db, auth } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import FitCard from '../components/FitCard';
+import CommentModal from '../components/CommentModal';
 import NotificationsScreen from './NotificationsScreen';
 import { theme } from '../styles/theme';
 
@@ -26,6 +27,11 @@ export default function HomeScreen({ navigation, route }) {
   });
   const [userProfileImageURL, setUserProfileImageURL] = useState(null);
   const [showNotifications, setShowNotifications] = useState(false);
+  
+  // Comment modal state
+  const [showCommentModal, setShowCommentModal] = useState(false);
+  const [selectedFit, setSelectedFit] = useState(null);
+  const [selectedComments, setSelectedComments] = useState([]);
 
   // FlatList ref for scrolling
   const flatListRef = useRef(null);
@@ -130,6 +136,8 @@ export default function HomeScreen({ navigation, route }) {
           );
         }
         
+
+        
         setFits(fitsData);
         calculateStats(fitsData);
       });
@@ -231,6 +239,25 @@ export default function HomeScreen({ navigation, route }) {
           viewOffset: -300, // Reduced offset since we're scrolling down
         });
       }, 300); // Wait 300ms for comment section to open
+    }
+  };
+
+  const handleOpenCommentModal = (fit, comments) => {
+    setSelectedFit(fit);
+    setSelectedComments(comments || []);
+    setShowCommentModal(true);
+  };
+
+  const handleCloseCommentModal = () => {
+    setShowCommentModal(false);
+    setSelectedFit(null);
+    setSelectedComments([]);
+  };
+
+  const handleCommentAdded = (newComment) => {
+    // Update the selected comments when a new comment is added
+    if (selectedFit && selectedComments) {
+      setSelectedComments([...selectedComments, newComment]);
     }
   };
 
@@ -380,11 +407,13 @@ export default function HomeScreen({ navigation, route }) {
               <FitCard 
                 fit={item} 
                 onCommentSectionOpen={handleCommentSectionOpen}
+                onOpenCommentModal={handleOpenCommentModal}
               />
             )}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.feedContainer}
             style={{ flex: 1 }}
+            keyboardShouldPersistTaps="handled"
             ListHeaderComponent={
               <Text style={styles.todaysFitsTitle}>Today's Fits</Text>
             }
@@ -397,6 +426,15 @@ export default function HomeScreen({ navigation, route }) {
         isVisible={showNotifications}
         onClose={handleCloseNotifications}
         onNavigateToFit={handleNavigateToFit}
+      />
+
+      {/* Comment Modal */}
+      <CommentModal
+        isVisible={showCommentModal}
+        onClose={handleCloseCommentModal}
+        fit={selectedFit}
+        comments={selectedComments}
+        onCommentAdded={handleCommentAdded}
       />
     </View>
   );
@@ -533,6 +571,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FFFFFF',
     textAlign: 'center',
+    marginTop: 30,
     marginBottom: 20,
     letterSpacing: 0.5,
   },
