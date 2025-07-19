@@ -338,6 +338,94 @@ await updateDoc(doc(db, "users", user.uid), {
 
 ## 📝 Recent Development Updates
 
+### 2024-12-19 - Navigation & Logout UX Improvements ✅
+
+**Navigation Flow Improvements:**
+
+- ✅ **Home Screen Profile Button**: Changed profile picture button in top-right corner to navigate to Profile screen instead of logging out
+- ✅ **Profile Screen Logout**: Added logout functionality to the settings button in Profile screen header
+- ✅ **Logout Icon**: Changed settings icon to logout icon (log-out-outline) for better UX clarity
+- ✅ **Consistent Navigation**: Profile button now provides intuitive access to user's profile and fit history
+
+**User Experience Enhancements:**
+
+- ✅ **Intuitive Profile Access**: Users can now easily access their profile by tapping their profile picture in the home screen
+- ✅ **Centralized Logout**: Logout functionality moved to Profile screen where users expect account management options
+- ✅ **Visual Clarity**: Clear logout icon indicates the button's purpose without confusion
+- ✅ **Better Information Architecture**: Profile-related actions are now logically grouped in the Profile screen
+
+**Technical Implementation:**
+
+- ✅ **Navigation Integration**: Added navigation.navigate('Profile') to HomeScreen profile button
+- ✅ **Firebase Auth Integration**: Imported signOut and auth from Firebase for logout functionality
+- ✅ **Error Handling**: Proper error handling for logout process
+- ✅ **AuthContext Integration**: Logout properly triggers AuthContext state changes for navigation
+
+This change improves the app's navigation flow by making the profile picture button serve as a natural entry point to the user's profile, while moving logout functionality to a more appropriate location in the Profile screen.
+
+---
+
+### 2024-12-19 - Home Screen Groups Horizontal Scrolling ✅
+
+**Groups Display Enhancement:**
+
+- ✅ **All Groups Visible**: Removed the 2-group limit and now displays all user groups in the home screen
+- ✅ **Horizontal Scrolling**: Added horizontal ScrollView for groups section when there are more than 2 groups
+- ✅ **Smooth Scrolling**: Implemented smooth horizontal scrolling with hidden scroll indicators for clean UX
+- ✅ **Proper Spacing**: Added right padding to ensure the last group and add button are fully visible
+
+**User Experience Improvements:**
+
+- ✅ **Complete Group Access**: Users can now see and access all their groups directly from the home screen
+- ✅ **Intuitive Navigation**: Horizontal scrolling provides natural way to browse through multiple groups
+- ✅ **Visual Consistency**: Maintains the same group button styling and selection states
+- ✅ **Add Group Button**: Always visible at the end of the scrollable list for easy group creation
+
+**Technical Implementation:**
+
+- ✅ **ScrollView Integration**: Added horizontal ScrollView with proper styling and behavior
+- ✅ **Dynamic Rendering**: All groups are now rendered instead of being limited to first 2
+- ✅ **Performance Optimization**: ScrollView efficiently handles rendering of multiple group buttons
+- ✅ **Responsive Design**: Works seamlessly across different screen sizes and group counts
+
+This enhancement provides better accessibility to all user groups while maintaining the clean, intuitive interface design.
+
+---
+
+### 2024-12-19 - Profile Screen Username Display ✅
+
+**Profile Header Enhancement:**
+
+- ✅ **Username Display**: Added user's username to the Profile screen header with @ symbol
+- ✅ **User Data Fetching**: Implemented user data fetching from Firestore to get username
+- ✅ **Conditional Rendering**: Username only displays if available in user data
+- ✅ **Visual Hierarchy**: Username positioned between "Profile" title and fit count subtitle
+
+**User Experience Improvements:**
+
+- ✅ **Personal Identity**: Users can now see their username prominently displayed in their profile
+- ✅ **Visual Consistency**: Username styling matches app's design system with primary color
+- ✅ **Clean Layout**: Username integrates seamlessly with existing header structure
+- ✅ **Professional Appearance**: @ symbol provides social media-like username display
+
+**Technical Implementation:**
+
+- ✅ **Firestore Integration**: Added getDoc and doc imports for user data fetching
+- ✅ **State Management**: Added userData state to store user profile information
+- ✅ **Data Fetching**: Created fetchUserData function to retrieve user document
+- ✅ **Error Handling**: Proper error handling for user data fetching
+- ✅ **Styling**: Added username style with appropriate typography and color
+
+**Header Structure:**
+
+- Profile (title)
+- @username (if available)
+- X fits in your archive (subtitle)
+
+This enhancement provides users with clear identification of their profile while maintaining the clean, professional appearance of the Profile screen.
+
+---
+
 ### 2024-12-19 - Major Bug Fixes & Improvements ✅
 
 **Fixed Critical Issues:**
@@ -886,3 +974,296 @@ The create group functionality now provides a seamless, consistent experience th
 - ✅ **Improved Stability**: More robust component that handles various authentication states
 
 The FitCard component now properly handles authentication state changes and prevents crashes when the user object is temporarily unavailable, providing a more stable and reliable user experience.
+
+---
+
+### 2024-12-19 - HomeScreen Group Filter Buttons Fix ✅
+
+**Critical Bug Resolution:**
+
+- ✅ **Group Filter Functionality**: Fixed group filter buttons in HomeScreen header to work properly like LeaderboardScreen
+- ✅ **Button Selection Logic**: Corrected the comparison logic that was comparing group names with group IDs
+- ✅ **Data Passing**: Fixed renderGroupButton to receive group objects instead of just IDs for proper display
+- ✅ **Selection State**: Updated handleGroupSelect to properly handle both string IDs and group objects
+- ✅ **Filter Application**: Group filtering now works correctly in fetchTodaysFits function
+
+**Technical Improvements:**
+
+- ✅ **Consistent Implementation**: Made HomeScreen group filters work exactly like LeaderboardScreen implementation
+- ✅ **Object Handling**: Updated renderGroupButton to handle both string values ('all', 'add') and group objects
+- ✅ **ID Extraction**: Added proper logic to extract group ID from group objects in handleGroupSelect
+- ✅ **Display Logic**: Fixed text display to show group names while using group IDs for filtering
+- ✅ **State Management**: Proper state updates when group selection changes
+
+**Root Cause Analysis:**
+
+- ✅ **Incorrect Data Flow**: renderGroupButton was receiving group.name but comparing with group.id
+- ✅ **Type Mismatch**: handleGroupSelect was receiving group names instead of group IDs
+- ✅ **Filter Logic**: fetchTodaysFits expected group IDs but was receiving group names
+
+**User Experience Benefits:**
+
+- ✅ **Working Group Filters**: Users can now filter fits by specific groups or view all groups combined
+- ✅ **Visual Feedback**: Selected group buttons now show proper active state styling
+- ✅ **Consistent Behavior**: Group filtering works identically to the leaderboard screen
+- ✅ **Intuitive Interaction**: Clear visual indication of which group is currently selected
+- ✅ **Proper Filtering**: Fits are correctly filtered based on the selected group
+
+**Implementation Details:**
+
+- ✅ **Button Rendering**: Updated to pass group objects instead of just IDs for proper display
+- ✅ **Selection Logic**: Fixed comparison to use group.id for selection state
+- ✅ **Handler Function**: Enhanced to extract group ID from group objects
+- ✅ **Display Text**: Shows group names while using group IDs for filtering logic
+- ✅ **State Updates**: Proper re-rendering when group selection changes
+
+The HomeScreen group filter buttons now provide the same reliable filtering functionality as the LeaderboardScreen, allowing users to easily switch between viewing all groups or specific group feeds with proper visual feedback and state management.
+
+---
+
+### 2024-12-19 - HomeScreen FlatList scrollToIndex Error Fix ✅
+
+**Critical Bug Resolution:**
+
+- ✅ **scrollToIndex Error Fix**: Fixed "scrollToIndex should be used in conjunction with getItemLayout or onScrollToIndexFailed" error
+- ✅ **getItemLayout Implementation**: Added getItemLayout function to provide exact item dimensions for FlatList
+- ✅ **onScrollToIndexFailed Handler**: Added fallback handler for when scrollToIndex fails
+- ✅ **Accurate Height Calculation**: Calculated precise item height based on FitCard component structure
+- ✅ **Navigation Integration**: Fixed notification-to-fit navigation that was causing the error
+
+**Technical Improvements:**
+
+- ✅ **Item Height Calculation**: Implemented detailed height calculation based on FitCard structure:
+  - Header: ~52px
+  - Content padding: ~12px
+  - Caption: ~38px (16px font + 22px line height)
+  - Image: ~300px (square aspect ratio)
+  - Rate section: ~16px
+  - Action section: ~24px
+  - Container margins: ~16px
+  - Additional padding: ~20px
+  - Total: 478px per item
+- ✅ **FlatList Props**: Added getItemLayout and onScrollToIndexFailed props to AnimatedFlatList
+- ✅ **Error Handling**: Added console warning for scrollToIndex failures with potential fallback logic
+- ✅ **Performance Optimization**: getItemLayout enables better FlatList performance by pre-calculating item positions
+
+**Root Cause Analysis:**
+
+- ✅ **Missing Required Props**: scrollToIndex requires getItemLayout or onScrollToIndexFailed to work properly
+- ✅ **Dynamic Item Heights**: FlatList couldn't determine item positions without explicit height information
+- ✅ **Navigation Flow**: Notification-to-fit navigation was triggering scrollToIndex without proper setup
+
+**User Experience Benefits:**
+
+- ✅ **No More Crashes**: App no longer crashes when navigating from notifications to specific fits
+- ✅ **Smooth Navigation**: Seamless transition from notification to fit location in feed
+- ✅ **Reliable Scrolling**: FlatList scrolling works consistently without errors
+- ✅ **Better Performance**: getItemLayout improves FlatList rendering performance
+- ✅ **Proper Error Handling**: Graceful fallback when scroll operations fail
+
+**Implementation Details:**
+
+- ✅ **getItemLayout Function**: Returns length, offset, and index for each item based on calculated height
+- ✅ **onScrollToIndexFailed Handler**: Provides fallback behavior when scrollToIndex fails
+- ✅ **FlatList Integration**: Added both props to AnimatedFlatList component
+- ✅ **Height Calculation**: Precise calculation based on actual FitCard component structure
+- ✅ **Error Prevention**: Comprehensive error handling for scroll operations
+
+The HomeScreen now provides reliable navigation from notifications to specific fits without any FlatList errors, ensuring smooth user experience when users tap on notifications to view related fits in the feed.
+
+---
+
+### 2024-12-19 - HomeScreen Notification Navigation to FitDetailsScreen ✅
+
+**Navigation Pattern Consistency:**
+
+- ✅ **Unified Navigation**: Changed notification-to-fit navigation to use FitDetailsScreen instead of scrolling to fit on homepage
+- ✅ **Consistent User Experience**: Now matches the same navigation pattern used in LeaderboardScreen and ProfileScreen
+- ✅ **Simplified Implementation**: Removed complex scrollToIndex logic and related FlatList props
+- ✅ **Better User Flow**: Users get a dedicated fit details view instead of being scrolled to a position in the feed
+- ✅ **Cleaner Code**: Eliminated getItemLayout and onScrollToIndexFailed functions that are no longer needed
+
+**Technical Improvements:**
+
+- ✅ **Navigation Consistency**: All fit navigation now uses `navigation.navigate('FitDetails', { fitId: fitId })`
+- ✅ **Removed Scroll Logic**: Eliminated complex scrollToIndex implementation with timing delays
+- ✅ **Simplified FlatList**: Removed getItemLayout and onScrollToIndexFailed props from AnimatedFlatList
+- ✅ **Cleaner State Management**: No longer need to track fit indices or handle scroll failures
+- ✅ **Better Performance**: Eliminated unnecessary scroll calculations and timing delays
+
+**User Experience Benefits:**
+
+- ✅ **Consistent Behavior**: Notification taps now behave identically to leaderboard and profile fit taps
+- ✅ **Dedicated View**: Users get a full-screen fit details experience instead of partial feed view
+- ✅ **Better Context**: FitDetailsScreen provides complete fit information with comments and ratings
+- ✅ **Smoother Navigation**: No more scroll animations or timing delays when accessing fits
+- ✅ **Professional Experience**: Matches modern app navigation patterns for content viewing
+
+**Implementation Details:**
+
+- ✅ **Navigation Update**: Changed handleNavigateToFit to use navigation.navigate instead of scrollToIndex
+- ✅ **Code Cleanup**: Removed getItemLayout and handleScrollToIndexFailed functions
+- ✅ **FlatList Simplification**: Removed unnecessary props from AnimatedFlatList component
+- ✅ **Pattern Consistency**: Now follows the same navigation pattern as LeaderboardScreen and ProfileScreen
+- ✅ **Error Prevention**: Eliminated potential scrollToIndex errors and timing issues
+
+The notification system now provides a consistent, professional navigation experience that matches the rest of the app, giving users a dedicated fit details view when they tap on notifications about their fits.
+
+---
+
+### 2024-12-19 - LeaderboardScreen Bottom Padding Fix ✅
+
+**UI/UX Improvement:**
+
+- ✅ **Tab Navigator Coverage Fix**: Increased bottom padding from 20px to 100px to prevent tab navigator from covering bottom content
+- ✅ **Better Content Accessibility**: Users can now see and interact with all leaderboard items without obstruction
+- ✅ **Consistent Spacing**: Matches the padding used in other screens like HomeScreen and GroupScreen
+- ✅ **Professional Layout**: Ensures proper spacing between content and navigation elements
+
+**Technical Improvement:**
+
+- ✅ **Content Container Padding**: Updated listContainer style to include adequate bottom padding
+- ✅ **Navigation Protection**: Prevents tab navigator from overlapping with leaderboard items
+- ✅ **Scroll Accessibility**: Users can scroll to see all content without any items being hidden
+
+**User Experience Benefits:**
+
+- ✅ **No Hidden Content**: All leaderboard items are now fully visible and accessible
+- ✅ **Better Scrolling**: Users can scroll to the bottom without content being cut off
+- ✅ **Professional Appearance**: Proper spacing creates a more polished, professional look
+- ✅ **Consistent Navigation**: Matches the spacing patterns used throughout the app
+
+The LeaderboardScreen now provides proper spacing at the bottom to ensure all content is accessible and not covered by the tab navigator, creating a better user experience when viewing the daily leaderboard.
+
+---
+
+### 2024-12-19 - LeaderboardScreen Console Log Cleanup ✅
+
+**Code Cleanup:**
+
+- ✅ **Removed Debug Console Logs**: Eliminated 5 console.log statements that were cluttering the development console
+- ✅ **Cleaner Development Experience**: Console is now free from excessive leaderboard debugging output
+- ✅ **Production Ready**: Removed development-only logging that was not needed for production
+- ✅ **Better Performance**: Eliminated unnecessary console operations that were running on every leaderboard fetch
+
+**Removed Console Logs:**
+
+- ✅ **Total fits count logging**: Removed `[Leaderboard] Total fits for group ${groupId}:` log
+- ✅ **Today's fits count logging**: Removed `[Leaderboard] Today's fits:` log
+- ✅ **Today's fits details logging**: Removed detailed fit information logging
+- ✅ **Eligible fits count logging**: Removed `[Leaderboard] Eligible fits (3+ ratings):` log
+- ✅ **Final leaderboard logging**: Removed final leaderboard array logging
+
+**Technical Benefits:**
+
+- ✅ **Reduced Console Noise**: Development console is now cleaner and easier to read
+- ✅ **Better Performance**: Eliminated unnecessary string formatting and object mapping for logging
+- ✅ **Cleaner Code**: Removed debugging code that was no longer needed
+- ✅ **Production Optimization**: Code is now more production-ready without debug artifacts
+
+The LeaderboardScreen now provides a cleaner development experience without excessive console logging, while maintaining all functionality for fetching and displaying the daily leaderboard.
+
+---
+
+### 2024-12-19 - LeaderboardScreen Subtitle Addition ✅
+
+**UI/UX Enhancement:**
+
+- ✅ **Added Subtitle Text**: Added secondary text "Leaderboard refresh at midnight — stay on top!" below the main title
+- ✅ **User Information**: Provides clear information about when the leaderboard resets
+- ✅ **Visual Hierarchy**: Creates better visual balance with main title and subtitle
+- ✅ **User Guidance**: Helps users understand the daily nature of the leaderboard competition
+
+**Technical Implementation:**
+
+- ✅ **Subtitle Component**: Added new Text component with subtitle styling
+- ✅ **Typography Styling**: Implemented subtitle style with appropriate font size (14px) and color (#CCCCCC)
+- ✅ **Spacing**: Added 4px margin top for proper visual separation from main title
+- ✅ **Letter Spacing**: Applied 0.2 letter spacing for better readability
+- ✅ **Consistent Design**: Matches the app's design language and color scheme
+
+**User Experience Benefits:**
+
+- ✅ **Clear Expectations**: Users now know when the leaderboard will refresh
+- ✅ **Better Information**: Provides context about the daily competition cycle
+- ✅ **Professional Appearance**: Enhanced visual hierarchy with title and subtitle
+- ✅ **User Engagement**: Encourages users to stay active to maintain their position
+- ✅ **Consistent Messaging**: Aligns with the app's competitive and daily ritual philosophy
+
+The LeaderboardScreen now provides users with clear information about the daily leaderboard refresh cycle, enhancing the competitive experience and helping users understand when they need to post their fits to stay competitive.
+
+---
+
+### 2024-12-19 - LeaderboardScreen Timezone Consistency Fix ✅
+
+**Critical Consistency Fix:**
+
+- ✅ **Timezone Alignment**: Changed leaderboard from UTC to local timezone to match HomeScreen feed
+- ✅ **User Experience**: Both feed and leaderboard now refresh at the same time (midnight local time)
+- ✅ **Cross-Timezone Groups**: Better support for groups with members in different timezones
+- ✅ **Intuitive Behavior**: Users see "today's" content based on their local timezone
+- ✅ **Updated Subtitle**: Changed subtitle to clarify "midnight local time" for user clarity
+
+**Technical Implementation:**
+
+- ✅ **UTC to Local Conversion**: Changed `setUTCHours(0, 0, 0, 0)` to `setHours(0, 0, 0, 0)`
+- ✅ **Date Calculation**: Updated `setUTCDate()` to `setDate()` for local timezone handling
+- ✅ **Consistent Logic**: Both `getLeaderboardFits` and `getAllGroupsLeaderboardFits` now use local time
+- ✅ **Subtitle Update**: Updated subtitle text to specify "midnight local time"
+- ✅ **Cross-Platform**: Works consistently across all timezones and devices
+
+**User Experience Benefits:**
+
+- ✅ **Consistent Timing**: Feed and leaderboard refresh at the same time for each user
+- ✅ **Timezone Support**: Users in different timezones see their own local "today"
+- ✅ **Intuitive Behavior**: Midnight means actual midnight in user's timezone
+- ✅ **Group Flexibility**: Groups with international members work naturally
+- ✅ **Clear Communication**: Subtitle now accurately reflects the refresh timing
+
+**Cross-Timezone Group Benefits:**
+
+- ✅ **Natural Competition**: Each user competes based on their local day
+- ✅ **Fair Play**: No timezone advantage/disadvantage in daily competitions
+- ✅ **User-Friendly**: Users don't need to calculate UTC times
+- ✅ **Consistent Experience**: Same behavior regardless of user location
+- ✅ **Group Harmony**: Members in different timezones have equal opportunity
+
+The leaderboard now provides a consistent, timezone-aware experience that works naturally for groups with members across different timezones, ensuring fair competition and intuitive daily refresh cycles for all users.
+
+---
+
+### 2024-12-19 - HomeScreen Countdown Timer Implementation ✅
+
+**UI/UX Enhancement:**
+
+- ✅ **Countdown Timer**: Replaced "Your Groups" text with "Feed resets in Xh Ym" countdown to midnight
+- ✅ **Real-time Updates**: Countdown updates every minute to show accurate time remaining
+- ✅ **User Awareness**: Users now know exactly when the daily feed will reset
+- ✅ **Competitive Urgency**: Creates sense of urgency and encourages daily participation
+- ✅ **Visual Consistency**: Maintains same styling as previous "Your Groups" text
+
+**Technical Implementation:**
+
+- ✅ **Countdown State**: Added countdownText state to track current countdown display
+- ✅ **Time Calculation**: Implemented calculateTimeUntilMidnight function to compute hours and minutes
+- ✅ **Interval Updates**: Set up 1-minute interval to update countdown display
+- ✅ **Cleanup**: Proper interval cleanup in useEffect return function
+- ✅ **Local Timezone**: Uses local timezone for midnight calculation to match app behavior
+
+**User Experience Benefits:**
+
+- ✅ **Clear Expectations**: Users know exactly when today's feed expires
+- ✅ **Daily Rhythm**: Reinforces the daily posting and rating cycle
+- ✅ **Competitive Motivation**: Countdown creates urgency to post and rate before reset
+- ✅ **Time Awareness**: Users can plan their fit posting around the reset time
+- ✅ **Consistent Messaging**: Aligns with the app's daily competition philosophy
+
+**Implementation Details:**
+
+- ✅ **Midnight Calculation**: Uses `setHours(24, 0, 0, 0)` to get next midnight
+- ✅ **Time Difference**: Calculates milliseconds difference and converts to hours/minutes
+- ✅ **Format Display**: Shows "Xh Ym" format for clean, readable countdown
+- ✅ **Minute Updates**: Updates every 60 seconds to keep countdown accurate
+- ✅ **Memory Management**: Properly cleans up interval to prevent memory leaks
+
+The HomeScreen now provides users with a clear countdown to the daily feed reset, enhancing the competitive experience and helping users understand the urgency of daily fit posting and rating activities.

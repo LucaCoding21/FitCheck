@@ -39,13 +39,13 @@ const calculateDisplayRating = (fit) => {
 // Helper function to get leaderboard fits
 export const getLeaderboardFits = async (groupId) => {
   try {
-    // Get today's date at midnight (UTC)
+    // Get today's date at midnight (local timezone)
     const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
     
-    // Get tomorrow's date at midnight (UTC)
+    // Get tomorrow's date at midnight (local timezone)
     const tomorrow = new Date(today);
-    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    tomorrow.setDate(tomorrow.getDate() + 1);
 
     // Query fits for the specific group (simplified to avoid complex index)
     const fitsQuery = query(
@@ -65,28 +65,10 @@ export const getLeaderboardFits = async (groupId) => {
       return fitDate && fitDate >= today && fitDate < tomorrow;
     });
 
-    console.log(`[Leaderboard] Total fits for group ${groupId}:`, fits.length);
-    console.log(`[Leaderboard] Today's fits:`, todayFits.length);
-    console.log(`[Leaderboard] Today's fits details:`, todayFits.map(fit => ({
-      id: fit.id,
-      ratingCount: fit.ratingCount,
-      fairRating: fit.fairRating,
-      ratings: fit.ratings,
-      userName: fit.userName
-    })));
-
     const eligibleFits = todayFits
       .filter(fit => (fit.ratingCount || 0) >= 3)
       .sort((a, b) => (b.fairRating || 0) - (a.fairRating || 0))
       .slice(0, 10); // Show top 10 instead of just 3
-
-    console.log(`[Leaderboard] Eligible fits (3+ ratings):`, eligibleFits.length);
-    console.log(`[Leaderboard] Final leaderboard:`, eligibleFits.map(fit => ({
-      id: fit.id,
-      ratingCount: fit.ratingCount,
-      fairRating: fit.fairRating,
-      userName: fit.userName
-    })));
 
     return eligibleFits;
   } catch (error) {
@@ -99,10 +81,10 @@ export const getLeaderboardFits = async (groupId) => {
 export const getAllGroupsLeaderboardFits = async (userGroups) => {
   try {
     const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
     
     const tomorrow = new Date(today);
-    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    tomorrow.setDate(tomorrow.getDate() + 1);
 
     const allFits = [];
     
@@ -147,6 +129,20 @@ export default function LeaderboardScreen({ navigation, route }) {
   const [selectedGroup, setSelectedGroup] = useState('all'); // 'all' or groupId
   const [fadeAnim] = useState(new Animated.Value(0));
   const [slideAnim] = useState(new Animated.Value(50));
+  const [countdownText, setCountdownText] = useState('');
+
+  // Calculate time until midnight
+  const calculateTimeUntilMidnight = () => {
+    const now = new Date();
+    const midnight = new Date();
+    midnight.setHours(24, 0, 0, 0); // Next midnight
+    
+    const diff = midnight - now;
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    
+    return `${hours}h ${minutes}m`;
+  };
 
   // Use groupId from route params if available (for direct navigation), otherwise use selected group
   const groupId = route?.params?.groupId || (selectedGroup === 'all' ? null : selectedGroup);
@@ -154,6 +150,16 @@ export default function LeaderboardScreen({ navigation, route }) {
   useEffect(() => {
     fetchUserGroups();
     animateIn();
+    
+    // Initialize countdown
+    setCountdownText(calculateTimeUntilMidnight());
+    
+    // Update countdown every minute
+    const countdownInterval = setInterval(() => {
+      setCountdownText(calculateTimeUntilMidnight());
+    }, 60000); // Update every minute
+    
+    return () => clearInterval(countdownInterval);
   }, []);
 
   useEffect(() => {
@@ -321,14 +327,17 @@ export default function LeaderboardScreen({ navigation, route }) {
       ]}
     >
       <View style={styles.emptyIcon}>
-        <Text style={styles.emptyIconText}>🏆</Text>
+        <Image 
+          source={require('../../assets/starman-whitelegs.png')} 
+          style={styles.emptyIconImage}
+        />
       </View>
-      <Text style={styles.emptyTitle}>No Leaderboard Yet</Text>
+      <Text style={styles.emptyTitle}>Ready to Compete?</Text>
       <Text style={styles.emptyText}>
-        Fits need at least 3 ratings to appear on the leaderboard
+        Post your fit and get 3+ ratings to climb the leaderboard
       </Text>
       <Text style={styles.emptySubtext}>
-        Encourage your group to rate today's fits!
+        The competition heats up when everyone participates
       </Text>
     </Animated.View>
   );
@@ -348,6 +357,9 @@ export default function LeaderboardScreen({ navigation, route }) {
         ]}
       >
         <Text style={styles.title}>Daily Leaderboard</Text>
+        <Text style={styles.subtitle}>
+          Feed resets in <Text style={styles.countdownTime}>{countdownText}</Text>
+        </Text>
       </Animated.View>
 
       {/* Group Filter */}
@@ -459,6 +471,15 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     letterSpacing: 0.5,
   },
+  subtitle: {
+    fontSize: 14,
+    color: '#CCCCCC',
+    marginTop: 4,
+    letterSpacing: 0.2,
+  },
+  countdownTime: {
+    color: '#CD9F3E',
+  },
 
   groupFilterContainer: {
     paddingHorizontal: 20,
@@ -503,7 +524,7 @@ const styles = StyleSheet.create({
     color: '#CCCCCC',
   },
   listContainer: {
-    paddingBottom: 20,
+    paddingBottom: 100,
   },
   leaderboardItem: {
     flexDirection: 'row',
@@ -608,16 +629,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 40,
   },
   emptyIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#2a2a2a',
+    width: 120,
+    height: 120,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom:60,
+    marginTop: 10,
   },
   emptyIconText: {
     fontSize: 40,
+  },
+  emptyIconImage: {
+    width: 150,
+    height: 150,
+    resizeMode: 'contain',
   },
   emptyTitle: {
     fontSize: 20,

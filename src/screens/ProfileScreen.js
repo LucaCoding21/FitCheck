@@ -12,8 +12,9 @@ import {
   RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { collection, query, where, orderBy, onSnapshot, getDoc, doc } from 'firebase/firestore';
+import { signOut } from 'firebase/auth';
+import { db, auth } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { theme } from '../styles/theme';
 
@@ -96,12 +97,14 @@ export default function ProfileScreen({ navigation }) {
   const [myFits, setMyFits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [userData, setUserData] = useState(null);
   const [fadeAnim] = useState(new Animated.Value(0));
   const [slideAnim] = useState(new Animated.Value(30));
   const unsubscribeRef = useRef(null);
 
   useEffect(() => {
     if (user?.uid) {
+      fetchUserData();
       const unsubscribe = setupRealTimeListener();
       unsubscribeRef.current = unsubscribe;
       animateIn();
@@ -130,6 +133,17 @@ export default function ProfileScreen({ navigation }) {
 
     return unsubscribeFocus;
   }, [navigation, user, loading]);
+
+  const fetchUserData = async () => {
+    try {
+      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      if (userDoc.exists()) {
+        setUserData(userDoc.data());
+      }
+    } catch (error) {
+      console.error('Error fetching user data:', error);
+    }
+  };
 
   const animateIn = () => {
     Animated.parallel([
@@ -183,6 +197,15 @@ export default function ProfileScreen({ navigation }) {
     setTimeout(() => {
       setRefreshing(false);
     }, 1000);
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth);
+      // The AuthContext will handle the navigation to sign-in screen
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
   };
 
   const renderFitItem = ({ item, index }) => {
@@ -282,16 +305,19 @@ export default function ProfileScreen({ navigation }) {
       <View style={styles.headerContent}>
         <View style={styles.headerText}>
           <Text style={styles.headerTitle}>Profile</Text>
+          {userData?.username && (
+            <Text style={styles.username}>@{userData.username}</Text>
+          )}
           <Text style={styles.headerSubtitle}>
             {myFits.length} fit{myFits.length !== 1 ? 's' : ''} in your archive
           </Text>
         </View>
         <TouchableOpacity 
           style={styles.settingsButton}
-          onPress={() => {/* TODO: Add settings navigation */}}
+          onPress={handleSignOut}
           activeOpacity={0.7}
         >
-          <Ionicons name="settings-outline" size={24} color="#FFFFFF" />
+          <Ionicons name="log-out-outline" size={24} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
     </Animated.View>
@@ -376,6 +402,12 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '700',
     color: theme.colors.text,
+    marginBottom: 4,
+  },
+  username: {
+    fontSize: 18,
+    color: theme.colors.primary,
+    fontWeight: '600',
     marginBottom: 4,
   },
   headerSubtitle: {

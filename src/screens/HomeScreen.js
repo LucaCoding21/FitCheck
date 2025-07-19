@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, Alert, StatusBar, Modal, Animated, Dimensions, Image, Animated as RNAnimated, PanGestureHandler, State } from 'react-native';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, Alert, StatusBar, Modal, Animated, Dimensions, Image, Animated as RNAnimated, PanGestureHandler, State, ScrollView } from 'react-native';
 import { collection, query, where, orderBy, onSnapshot, getDocs, doc, getDoc } from 'firebase/firestore';
 
 const AnimatedFlatList = RNAnimated.createAnimatedComponent(FlatList);
@@ -28,6 +28,7 @@ export default function HomeScreen({ navigation, route }) {
   const [userProfileImageURL, setUserProfileImageURL] = useState(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
+  const [countdownText, setCountdownText] = useState('');
   
   // Comment modal state
   const [showCommentModal, setShowCommentModal] = useState(false);
@@ -41,6 +42,19 @@ export default function HomeScreen({ navigation, route }) {
   const entranceFadeAnim = useRef(new Animated.Value(0)).current;
   const entranceSlideAnim = useRef(new Animated.Value(50)).current;
   const titleScale = useRef(new Animated.Value(0.8)).current;
+
+  // Calculate time until midnight
+  const calculateTimeUntilMidnight = () => {
+    const now = new Date();
+    const midnight = new Date();
+    midnight.setHours(24, 0, 0, 0); // Next midnight
+    
+    const diff = midnight - now;
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    
+    return `${hours}h ${minutes}m`;
+  };
 
   useEffect(() => {
     // Entrance animations
@@ -66,6 +80,16 @@ export default function HomeScreen({ navigation, route }) {
     fetchUserGroups();
     fetchUserProfile();
     fetchUnreadNotificationsCount();
+    
+    // Initialize countdown
+    setCountdownText(calculateTimeUntilMidnight());
+    
+    // Update countdown every minute
+    const countdownInterval = setInterval(() => {
+      setCountdownText(calculateTimeUntilMidnight());
+    }, 60000); // Update every minute
+    
+    return () => clearInterval(countdownInterval);
   }, []);
 
   useEffect(() => {
@@ -243,7 +267,9 @@ export default function HomeScreen({ navigation, route }) {
   };
 
   const handleGroupSelect = (group) => {
-    setSelectedGroup(group);
+    // Handle both string IDs and group objects
+    const groupId = typeof group === 'string' ? group : group.id;
+    setSelectedGroup(groupId);
   };
 
   const handleAddGroup = () => {
@@ -264,20 +290,11 @@ export default function HomeScreen({ navigation, route }) {
   };
 
   const handleNavigateToFit = (fitId) => {
-    // Find the fit in the current list and scroll to it
-    const fitIndex = fits.findIndex(fit => fit.id === fitId);
-    if (fitIndex !== -1 && flatListRef.current) {
-      // Delay scroll to allow notifications to close
-      setTimeout(() => {
-        flatListRef.current.scrollToIndex({
-          index: fitIndex,
-          animated: true,
-          viewPosition: 0.1, // Position the item 15% from the top (higher up)
-          viewOffset: 0, // Additional offset to move it up more
-        });
-      }, 350); // Wait for notifications to close
-    }
+    // Navigate to FitDetailsScreen instead of scrolling to fit
+    navigation.navigate('FitDetails', { fitId: fitId });
   };
+
+
 
   const handleScroll = (event) => {
     // Simple scroll handler - no header animation
@@ -308,7 +325,7 @@ export default function HomeScreen({ navigation, route }) {
     }
   };
 
-  const renderGroupButton = (group, isSelected) => {
+  const renderGroupButton = (group, isSelected, key) => {
     const isAllGroup = group === 'all';
     const isAddButton = group === 'add';
     
@@ -322,12 +339,12 @@ export default function HomeScreen({ navigation, route }) {
         >
           <Text style={styles.addGroupIcon}>+</Text>
         </TouchableOpacity>
-      );
+        );
     }
 
     return (
       <TouchableOpacity
-        key={group}
+        key={key || group}
         style={[
           styles.groupButton,
           isSelected && styles.groupButtonSelected
@@ -339,7 +356,7 @@ export default function HomeScreen({ navigation, route }) {
           styles.groupButtonText,
           isSelected && styles.groupButtonTextSelected
         ]}>
-          {isAllGroup ? 'All' : group}
+          {isAllGroup ? 'All' : (typeof group === 'string' ? group : group.name)}
         </Text>
       </TouchableOpacity>
     );
@@ -378,7 +395,7 @@ export default function HomeScreen({ navigation, route }) {
             </TouchableOpacity>
             <TouchableOpacity 
               style={styles.profileButton}
-              onPress={handleSignOut}
+              onPress={() => navigation.navigate('Profile')}
               activeOpacity={0.8}
             >
               {userProfileImageURL ? (
@@ -397,14 +414,19 @@ export default function HomeScreen({ navigation, route }) {
 
         {/* Groups Section */}
         <View style={styles.groupsSection}>
-          <Text style={styles.groupsTitle}>Your Groups</Text>
-          <View style={styles.groupsContainer}>
+          <Text style={styles.groupsTitle}>Feed resets in {countdownText}</Text>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.groupsContainer}
+            style={styles.groupsScrollView}
+          >
             {renderGroupButton('all', selectedGroup === 'all')}
-            {userGroups.slice(0, 2).map(group => 
-              renderGroupButton(group.name, selectedGroup === group.id)
+            {userGroups.map(group => 
+              renderGroupButton(group, selectedGroup === group.id, group.id)
             )}
             {renderGroupButton('add')}
-          </View>
+          </ScrollView>
         </View>
       </Animated.View>
       
@@ -441,11 +463,14 @@ export default function HomeScreen({ navigation, route }) {
         ) : fits.length === 0 ? (
           <View style={styles.emptyState}>
             <View style={styles.emptyIcon}>
-              <Text style={styles.emptyIconText}>📸</Text>
+              <Image 
+                source={require('../../assets/starman-whitelegs.png')} 
+                style={styles.emptyIconImage}
+              />
             </View>
-            <Text style={styles.emptyText}>No fits posted today</Text>
-            <Text style={styles.emptySubtext}>
-              Be the first to drop your fit in any of your groups
+            <Text style={styles.emptyTitle}>No Fits Today</Text>
+            <Text style={styles.emptyText}>
+              Be the first to drop your fit and start the daily feed
             </Text>
           </View>
         ) : (
@@ -491,7 +516,7 @@ export default function HomeScreen({ navigation, route }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#121212',
+    backgroundColor: '#1A1A1A',
   },
   
   // Header styles
@@ -510,7 +535,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 8,
   },
   feedTitle: {
     fontSize: 32,
@@ -587,9 +612,13 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     opacity: 0.8,
   },
+  groupsScrollView: {
+    flexGrow: 0,
+  },
   groupsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingRight: 20, // Add padding to ensure last item is fully visible
   },
   groupButton: {
     backgroundColor: '#2A2A2A',
@@ -647,26 +676,34 @@ const styles = StyleSheet.create({
     paddingHorizontal: 40,
   },
   emptyIcon: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    backgroundColor: '#2A2A2A',
+    width: 120,
+    height: 120,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    marginBottom: 60,
+    marginTop: 10,
   },
   emptyIconText: {
     fontSize: 36,
   },
-  emptyText: {
+  emptyIconImage: {
+    width: 150,
+    height: 150,
+    resizeMode: 'contain',
+  },
+  emptyTitle: {
     fontSize: 20,
-    fontWeight: '600',
+    fontWeight: 'bold',
     color: '#FFFFFF',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  emptyText: {
+    fontSize: 16,
+    color: '#CCCCCC',
     textAlign: 'center',
     marginBottom: 8,
-    letterSpacing: 0.3,
+    lineHeight: 24,
   },
   emptySubtext: {
     fontSize: 16,
