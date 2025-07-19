@@ -96,7 +96,7 @@ const NoGroupsScreen = ({ navigation }) => {
           ]}
         >
           <Image
-            source={require('../../assets/logo.png')}
+            source={require('../../assets/starman.png')}
             style={styles.starLogo}
             resizeMode="contain"
           />

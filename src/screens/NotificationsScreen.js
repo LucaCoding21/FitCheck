@@ -10,14 +10,14 @@ import {
   Dimensions,
   StatusBar,
 } from 'react-native';
-import { collection, query, where, orderBy, onSnapshot, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, getDocs, doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 // import { Ionicons } from '@expo/vector-icons';
 
 const { width, height } = Dimensions.get('window');
 
-export default function NotificationsScreen({ isVisible, onClose, onNavigateToFit }) {
+export default function NotificationsScreen({ isVisible, onClose, onNavigateToFit, onNotificationsOpened }) {
   const { user } = useAuth();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -53,7 +53,13 @@ export default function NotificationsScreen({ isVisible, onClose, onNavigateToFi
         duration: 300,
         useNativeDriver: true,
       }),
-    ]).start();
+    ]).start(() => {
+      // Mark all notifications as read when opened
+      markNotificationsAsRead();
+      if (onNotificationsOpened) {
+        onNotificationsOpened();
+      }
+    });
   };
 
   const hideNotifications = () => {
@@ -76,6 +82,24 @@ export default function NotificationsScreen({ isVisible, onClose, onNavigateToFi
     ]).start(() => {
       onClose();
     });
+  };
+
+  const markNotificationsAsRead = async () => {
+    if (!user || notifications.length === 0) return;
+
+    try {
+      // Generate notification IDs for all current notifications
+      const notificationIds = notifications.map(notification => {
+        return `${notification.fitId}_${notification.userId}_${notification.timestamp?.toDate?.()?.getTime() || notification.timestamp}`;
+      });
+
+      // Update user document to mark these notifications as read
+      await updateDoc(doc(db, 'users', user.uid), {
+        readNotificationIds: arrayUnion(...notificationIds)
+      });
+    } catch (error) {
+      console.error('Error marking notifications as read:', error);
+    }
   };
 
   const fetchNotifications = async () => {

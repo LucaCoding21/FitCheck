@@ -27,6 +27,7 @@ export default function HomeScreen({ navigation, route }) {
   });
   const [userProfileImageURL, setUserProfileImageURL] = useState(null);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
   
   // Comment modal state
   const [showCommentModal, setShowCommentModal] = useState(false);
@@ -64,6 +65,7 @@ export default function HomeScreen({ navigation, route }) {
 
     fetchUserGroups();
     fetchUserProfile();
+    fetchUnreadNotificationsCount();
   }, []);
 
   useEffect(() => {
@@ -83,6 +85,57 @@ export default function HomeScreen({ navigation, route }) {
       }
     } catch (error) {
       console.error('Error fetching user profile:', error);
+    }
+  };
+
+  const fetchUnreadNotificationsCount = async () => {
+    if (!user) return;
+
+    try {
+      // Get all fits by the current user
+      const userFitsQuery = query(
+        collection(db, 'fits'),
+        where('userId', '==', user.uid),
+        orderBy('createdAt', 'desc')
+      );
+
+      const unsubscribe = onSnapshot(userFitsQuery, async (snapshot) => {
+        const userFits = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+
+        // Get user's read notifications from their profile
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        const userData = userDoc.data();
+        const readNotificationIds = userData?.readNotificationIds || [];
+
+        // Count unread notifications
+        let unreadCount = 0;
+        
+        for (const fit of userFits) {
+          if (fit.comments && Array.isArray(fit.comments)) {
+            // Filter out comments by the user themselves and count unread ones
+            const otherComments = fit.comments.filter(comment => 
+              comment.userId !== user.uid
+            );
+            
+            // Count comments that haven't been read
+            const unreadComments = otherComments.filter(comment => {
+              const notificationId = `${fit.id}_${comment.userId}_${comment.timestamp?.toDate?.()?.getTime() || comment.timestamp}`;
+              return !readNotificationIds.includes(notificationId);
+            });
+            
+            unreadCount += unreadComments.length;
+          }
+        }
+
+        setUnreadNotificationsCount(unreadCount);
+      });
+
+      return unsubscribe;
+    } catch (error) {
+      console.error('Error fetching unread notifications count:', error);
     }
   };
 
@@ -201,6 +254,11 @@ export default function HomeScreen({ navigation, route }) {
     setShowNotifications(true);
   };
 
+  const handleNotificationsOpened = () => {
+    // Clear unread count when notifications are opened
+    setUnreadNotificationsCount(0);
+  };
+
   const handleCloseNotifications = () => {
     setShowNotifications(false);
   };
@@ -227,19 +285,8 @@ export default function HomeScreen({ navigation, route }) {
   };
 
   const handleCommentSectionOpen = (fitId) => {
-    // Find the index of the fit in the array
-    const fitIndex = fits.findIndex(fit => fit.id === fitId);
-    if (fitIndex !== -1 && flatListRef.current) {
-      // Delay scroll to allow comment section animation to complete
-      setTimeout(() => {
-        flatListRef.current.scrollToIndex({
-          index: fitIndex,
-          animated: true,
-          viewPosition: 0.8, // Position the item 80% from the top (scrolls down)
-          viewOffset: -300, // Reduced offset since we're scrolling down
-        });
-      }, 300); // Wait 300ms for comment section to open
-    }
+    // Comment section opened - no auto-scroll needed
+    // User can manually scroll if they want to see the fit
   };
 
   const handleOpenCommentModal = (fit, comments) => {
@@ -325,6 +372,9 @@ export default function HomeScreen({ navigation, route }) {
                 source={require('../../assets/noti.png')} 
                 style={styles.notificationIcon}
               />
+              {unreadNotificationsCount > 0 && (
+                <View style={styles.notificationDot} />
+              )}
             </TouchableOpacity>
             <TouchableOpacity 
               style={styles.profileButton}
@@ -399,7 +449,7 @@ export default function HomeScreen({ navigation, route }) {
             </Text>
           </View>
         ) : (
-          <AnimatedFlatList
+                      <AnimatedFlatList
             ref={flatListRef}
             data={fits}
             keyExtractor={(item) => item.id}
@@ -414,9 +464,6 @@ export default function HomeScreen({ navigation, route }) {
             contentContainerStyle={styles.feedContainer}
             style={{ flex: 1 }}
             keyboardShouldPersistTaps="handled"
-            ListHeaderComponent={
-              <Text style={styles.todaysFitsTitle}>Today's Fits</Text>
-            }
           />
         )}
       </Animated.View>
@@ -426,6 +473,7 @@ export default function HomeScreen({ navigation, route }) {
         isVisible={showNotifications}
         onClose={handleCloseNotifications}
         onNavigateToFit={handleNavigateToFit}
+        onNotificationsOpened={handleNotificationsOpened}
       />
 
       {/* Comment Modal */}
@@ -485,6 +533,25 @@ const styles = StyleSheet.create({
     width: 35,
     height: 35,
     tintColor: '#FFFFFF',
+  },
+  notificationDot: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#FF3B30',
+    borderWidth: 2,
+    borderColor: '#121212',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   profileButton: {
     width: 40,
@@ -564,18 +631,10 @@ const styles = StyleSheet.create({
   // Content styles
   contentContainer: {
     flex: 1,
-    paddingHorizontal: 20,
-  },
-  todaysFitsTitle: {
-    fontSize: 25,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    textAlign: 'center',
-    marginTop: 30,
-    marginBottom: 20,
-    letterSpacing: 0.5,
+    paddingHorizontal: 5,
   },
   feedContainer: {
+    paddingTop: 7,
     paddingBottom: 100,
 
   },

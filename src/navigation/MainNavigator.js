@@ -12,6 +12,7 @@ import GroupScreen from '../screens/GroupScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import LeaderboardScreen from '../components/LeaderboardScreen';
 import NoGroupsScreen from '../screens/NoGroupsScreen';
+import FitDetailsScreen from '../screens/FitDetailsScreen';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -86,7 +87,7 @@ function CustomTabBar({ state, descriptors, navigation }) {
     }}>
       <View style={{
         flexDirection: 'row',
-        backgroundColor: '#1A1A1A',
+        backgroundColor: '#060606',
         borderRadius: 35,
         paddingHorizontal: 12,
         paddingVertical: 12,
@@ -352,14 +353,18 @@ function MainNavigator({ route }) {
           <Stack.Screen name="NoGroups" component={NoGroupsScreen} />
           <Stack.Screen name="Groups" component={GroupScreen} />
           <Stack.Screen name="Profile" component={ProfileScreen} />
+          <Stack.Screen name="FitDetails" component={FitDetailsScreen} />
         </>
       ) : (
         // Has groups - show MainTabs with tab bar
-        <Stack.Screen 
-          name="MainTabs" 
-          component={MainTabs}
-          initialParams={{ selectedGroup }}
-        />
+        <>
+          <Stack.Screen 
+            name="MainTabs" 
+            component={MainTabs}
+            initialParams={{ selectedGroup }}
+          />
+          <Stack.Screen name="FitDetails" component={FitDetailsScreen} />
+        </>
       )}
     </Stack.Navigator>
   );

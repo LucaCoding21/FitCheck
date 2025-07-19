@@ -78,7 +78,7 @@ export const getLeaderboardFits = async (groupId) => {
     const eligibleFits = todayFits
       .filter(fit => (fit.ratingCount || 0) >= 3)
       .sort((a, b) => (b.fairRating || 0) - (a.fairRating || 0))
-      .slice(0, 3);
+      .slice(0, 10); // Show top 10 instead of just 3
 
     console.log(`[Leaderboard] Eligible fits (3+ ratings):`, eligibleFits.length);
     console.log(`[Leaderboard] Final leaderboard:`, eligibleFits.map(fit => ({
@@ -95,17 +95,61 @@ export const getLeaderboardFits = async (groupId) => {
   }
 };
 
+// Helper function to get all fits from user's groups
+export const getAllGroupsLeaderboardFits = async (userGroups) => {
+  try {
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    
+    const tomorrow = new Date(today);
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+
+    const allFits = [];
+    
+    for (const group of userGroups) {
+      const fitsQuery = query(
+        collection(db, 'fits'),
+        where('groupIds', 'array-contains', group.id)
+      );
+
+      const snapshot = await getDocs(fitsQuery);
+      const groupFits = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+
+      allFits.push(...groupFits);
+    }
+
+    // Filter for today's fits, 3+ ratings, and sort by fair rating
+    const todayFits = allFits.filter(fit => {
+      const fitDate = fit.createdAt?.toDate();
+      return fitDate && fitDate >= today && fitDate < tomorrow;
+    });
+
+    const eligibleFits = todayFits
+      .filter(fit => (fit.ratingCount || 0) >= 3)
+      .sort((a, b) => (b.fairRating || 0) - (a.fairRating || 0))
+      .slice(0, 10);
+
+    return eligibleFits;
+  } catch (error) {
+    console.error('Error fetching all groups leaderboard fits:', error);
+    throw error;
+  }
+};
+
 export default function LeaderboardScreen({ navigation, route }) {
   const { user } = useAuth();
   const [leaderboardFits, setLeaderboardFits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [userGroups, setUserGroups] = useState([]);
-  const [selectedGroup, setSelectedGroup] = useState(null);
+  const [selectedGroup, setSelectedGroup] = useState('all'); // 'all' or groupId
   const [fadeAnim] = useState(new Animated.Value(0));
   const [slideAnim] = useState(new Animated.Value(50));
 
   // Use groupId from route params if available (for direct navigation), otherwise use selected group
-  const groupId = route?.params?.groupId || selectedGroup;
+  const groupId = route?.params?.groupId || (selectedGroup === 'all' ? null : selectedGroup);
 
   useEffect(() => {
     fetchUserGroups();
@@ -113,16 +157,12 @@ export default function LeaderboardScreen({ navigation, route }) {
   }, []);
 
   useEffect(() => {
-    if (userGroups.length > 0 && !selectedGroup) {
-      setSelectedGroup(userGroups[0].id);
-    }
-  }, [userGroups]);
-
-  useEffect(() => {
-    if (groupId) {
+    if (userGroups.length > 0 && selectedGroup === 'all') {
+      fetchAllGroupsLeaderboard();
+    } else if (selectedGroup !== 'all') {
       fetchLeaderboard();
     }
-  }, [groupId]);
+  }, [selectedGroup, userGroups]);
 
   const animateIn = () => {
     Animated.parallel([
@@ -154,11 +194,11 @@ export default function LeaderboardScreen({ navigation, route }) {
   };
 
   const fetchLeaderboard = async () => {
-    if (!groupId) return;
+    if (!selectedGroup || selectedGroup === 'all') return;
 
     setLoading(true);
     try {
-      const fits = await getLeaderboardFits(groupId);
+      const fits = await getLeaderboardFits(selectedGroup);
       setLeaderboardFits(fits);
     } catch (error) {
       console.error('Error fetching leaderboard:', error);
@@ -167,59 +207,106 @@ export default function LeaderboardScreen({ navigation, route }) {
     }
   };
 
+  const fetchAllGroupsLeaderboard = async () => {
+    if (userGroups.length === 0) return;
+
+    setLoading(true);
+    try {
+      const fits = await getAllGroupsLeaderboardFits(userGroups);
+      setLeaderboardFits(fits);
+    } catch (error) {
+      console.error('Error fetching all groups leaderboard:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getRankBadgeStyle = (position) => {
+    switch (position) {
+      case 1:
+        return { backgroundColor: '#CD9F3E', borderColor: '#CD9F3E' }; // Gold
+      case 2:
+        return { backgroundColor: '#A9A9A9', borderColor: '#A9A9A9' }; // Silver
+      case 3:
+        return { backgroundColor: '#7F461F', borderColor: '#7F461F' }; // Bronze
+      default:
+        return { backgroundColor: 'transparent', borderColor: 'transparent' };
+    }
+  };
+
   const renderLeaderboardItem = ({ item, index }) => {
     const position = index + 1;
     const isTopThree = position <= 3;
+    const rankBadgeStyle = getRankBadgeStyle(position);
+    const isCurrentUser = item.userId === user?.uid;
     
     return (
-      <Animated.View
-        style={[
-          styles.leaderboardItem,
-          {
-            opacity: fadeAnim,
-            transform: [{ translateY: slideAnim }],
-          },
-        ]}
+      <TouchableOpacity
+        onPress={() => {
+          // Navigate to fit details
+          navigation.navigate('FitDetails', { 
+            fitId: item.id 
+          });
+        }}
+        activeOpacity={0.7}
       >
-        {/* Position Badge */}
-        <View style={[styles.positionBadge, isTopThree && styles.topThreeBadge]}>
-          <Text style={[styles.positionText, isTopThree && styles.topThreeText]}>
-            {position}
-          </Text>
-        </View>
-
-        {/* Fit Image */}
-        <View style={styles.imageContainer}>
-          {item.imageURL ? (
-            <Image
-              source={{ uri: item.imageURL }}
-              style={styles.fitImage}
-              resizeMode="cover"
-            />
-          ) : (
-            <View style={styles.placeholderImage}>
-              <Text style={styles.placeholderText}>📸</Text>
-            </View>
-          )}
-        </View>
-
-        {/* Fit Details */}
-        <View style={styles.fitDetails}>
-          <Text style={styles.username}>{item.userName || 'Anonymous'}</Text>
-          <Text style={styles.caption} numberOfLines={2}>
-            {item.caption || 'No caption'}
-          </Text>
-          <View style={styles.ratingContainer}>
-            <Text style={styles.ratingText}>
-              {calculateDisplayRating(item)}
-            </Text>
-            <Text style={styles.ratingLabel}>★</Text>
-            <Text style={styles.ratingCount}>
-              ({item.ratingCount || 0} ratings)
+        <Animated.View
+          style={[
+            styles.leaderboardItem,
+            isCurrentUser && styles.currentUserItem,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }],
+            },
+          ]}
+        >
+          {/* Rank Badge */}
+          <View style={[styles.rankBadge, rankBadgeStyle]}>
+            <Text style={[styles.rankText, isTopThree && styles.topThreeRankText]}>
+              {position}
             </Text>
           </View>
-        </View>
-      </Animated.View>
+
+          {/* Profile Picture */}
+          <View style={styles.profileContainer}>
+            {item.userProfileImageURL ? (
+              <Image
+                source={{ uri: item.userProfileImageURL }}
+                style={styles.profileImage}
+                resizeMode="cover"
+              />
+            ) : (
+              <View style={styles.placeholderProfile}>
+                <Text style={styles.placeholderText}>👤</Text>
+              </View>
+            )}
+          </View>
+
+          {/* User Info */}
+          <View style={styles.userInfo}>
+            <Text style={styles.username}>{item.userName || 'Anonymous'}</Text>
+            {isCurrentUser && (
+              <Text style={styles.currentUserLabel}>You</Text>
+            )}
+          </View>
+
+          {/* Rating */}
+          <View style={styles.ratingContainer}>
+            <Text style={styles.starIcon}>★</Text>
+            <Text style={styles.ratingText}>
+              {calculateDisplayRating(item)} 
+              <Text style={styles.ratingCount}>
+                ({item.ratingCount || 0})
+              </Text>
+            </Text>
+          </View>
+
+          {/* Navigation Arrow */}
+          <View style={styles.arrowContainer}>
+            <Text style={styles.arrowIcon}>›</Text>
+          </View>
+        </Animated.View>
+      </TouchableOpacity>
     );
   };
 
@@ -260,29 +347,55 @@ export default function LeaderboardScreen({ navigation, route }) {
           },
         ]}
       >
-        <View style={styles.headerContent}>
-          <Text style={styles.title}>Daily Leaderboard</Text>
-          {userGroups.length > 0 && (
-            <View style={styles.groupSelector}>
-              <Text style={styles.groupLabel}>Group:</Text>
-              <TouchableOpacity
-                style={styles.groupButton}
-                onPress={() => {
-                  // Cycle through groups
-                  const currentIndex = userGroups.findIndex(g => g.id === selectedGroup);
-                  const nextIndex = (currentIndex + 1) % userGroups.length;
-                  setSelectedGroup(userGroups[nextIndex].id);
-                }}
-              >
-                <Text style={styles.groupName}>
-                  {userGroups.find(g => g.id === selectedGroup)?.name || 'Select Group'}
-                </Text>
-                <Text style={styles.groupArrow}>▼</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
+        <Text style={styles.title}>Daily Leaderboard</Text>
       </Animated.View>
+
+      {/* Group Filter */}
+      {userGroups.length > 0 && (
+        <Animated.View
+          style={[
+            styles.groupFilterContainer,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }],
+            },
+          ]}
+        >
+          <View style={styles.groupFilterTabs}>
+            <TouchableOpacity 
+              style={[
+                styles.groupFilterTab, 
+                selectedGroup === 'all' && styles.groupFilterTabActive
+              ]}
+              onPress={() => setSelectedGroup('all')}
+            >
+              <Text style={[
+                styles.groupFilterText,
+                selectedGroup === 'all' && styles.groupFilterTextActive
+              ]}>
+                All
+              </Text>
+            </TouchableOpacity>
+            {userGroups.map((group) => (
+              <TouchableOpacity 
+                key={group.id}
+                style={[
+                  styles.groupFilterTab, 
+                  selectedGroup === group.id && styles.groupFilterTabActive
+                ]}
+                onPress={() => setSelectedGroup(group.id)}
+              >
+                <Text style={[
+                  styles.groupFilterText,
+                  selectedGroup === group.id && styles.groupFilterTextActive
+                ]}>
+                  {group.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </Animated.View>
+      )}
 
       {/* Content */}
       <Animated.View
@@ -336,61 +449,45 @@ const styles = StyleSheet.create({
     backgroundColor: '#1a1a1a',
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
     paddingTop: 60,
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+  },
+  title: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
+  },
+
+  groupFilterContainer: {
     paddingHorizontal: 20,
     paddingBottom: 20,
   },
-  backButton: {
-    width: 40,
-    height: 40,
+  groupFilterTabs: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  groupFilterTab: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     borderRadius: 20,
     backgroundColor: '#2a2a2a',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 15,
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
   },
-  backButtonText: {
-    fontSize: 20,
-    color: '#FFFFFF',
+  groupFilterTabActive: {
+    backgroundColor: '#B5483D',
+    borderColor: '#B5483D',
+  },
+  groupFilterText: {
+    fontSize: 14,
     fontWeight: '600',
-  },
-  headerContent: {
-    flex: 1,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
     color: '#FFFFFF',
-    marginBottom: 12,
   },
-  groupSelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  groupLabel: {
-    fontSize: 16,
-    color: '#CCCCCC',
-    marginRight: 8,
-  },
-  groupButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#2a2a2a',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  groupName: {
-    fontSize: 16,
+  groupFilterTextActive: {
     color: '#FFFFFF',
-    fontWeight: '600',
-    marginRight: 4,
-  },
-  groupArrow: {
-    fontSize: 12,
-    color: '#CCCCCC',
   },
   content: {
     flex: 1,
@@ -411,43 +508,45 @@ const styles = StyleSheet.create({
   leaderboardItem: {
     flexDirection: 'row',
     backgroundColor: '#2a2a2a',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 13,
     alignItems: 'center',
   },
-  positionBadge: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#666666',
+  currentUserItem: {
+    borderWidth: 2,
+    borderColor: 'rgba(181, 72, 61, 0.6)',
+    backgroundColor: '#2a2a2a',
+  },
+  rankBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 16,
+    marginRight: 10,
+    borderWidth: 2,
   },
-  topThreeBadge: {
-    backgroundColor: '#B5483D',
-  },
-  positionText: {
-    fontSize: 18,
+  rankText: {
+    fontSize: 14,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
-  topThreeText: {
+  topThreeRankText: {
     color: '#FFFFFF',
   },
-  imageContainer: {
-    width: 60,
-    height: 80,
-    borderRadius: 8,
+  profileContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     overflow: 'hidden',
-    marginRight: 16,
+    marginRight: 10,
   },
-  fitImage: {
+  profileImage: {
     width: '100%',
     height: '100%',
   },
-  placeholderImage: {
+  placeholderProfile: {
     width: '100%',
     height: '100%',
     backgroundColor: '#444444',
@@ -455,41 +554,52 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   placeholderText: {
-    fontSize: 24,
+    fontSize: 20,
   },
-  fitDetails: {
+  userInfo: {
     flex: 1,
   },
   username: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     color: '#FFFFFF',
-    marginBottom: 4,
   },
-  caption: {
-    fontSize: 14,
-    color: '#CCCCCC',
-    marginBottom: 8,
-    lineHeight: 20,
+  currentUserLabel: {
+    fontSize: 12,
+    color: 'rgba(181, 72, 61, 0.8)',
+    fontWeight: '600',
+    marginTop: 2,
   },
   ratingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginRight: 8,
+  },
+  starIcon: {
+    fontSize: 18,
+    color: '#FFD700',
+    marginRight: 4,
   },
   ratingText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#B5483D',
-    marginRight: 4,
-  },
-  ratingLabel: {
-    fontSize: 16,
-    color: '#B5483D',
-    marginRight: 4,
+    fontSize: 13,
+    color: '#FFFFFF',
+    fontWeight: '600',
   },
   ratingCount: {
     fontSize: 14,
-    color: '#999999',
+    color: '#71717A',
+    fontWeight: '400',
+  },
+  arrowContainer: {
+    width: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  arrowIcon: {
+    fontSize: 18,
+    color: '#666666',
+    fontWeight: 'bold',
   },
   emptyState: {
     flex: 1,

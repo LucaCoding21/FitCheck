@@ -43,7 +43,7 @@ export default function FitCard({ fit, onCommentSectionOpen, onOpenCommentModal 
       // Fallback to fetching from users collection if data not in fit
       fetchUserData();
     }
-  }, [fit]);
+  }, [fit, user]);
 
   // Separate useEffect for comments to avoid conflicts with real-time updates
   useEffect(() => {
@@ -74,6 +74,12 @@ export default function FitCard({ fit, onCommentSectionOpen, onOpenCommentModal 
 
   const fetchUserGroups = async () => {
     try {
+      // Check if user exists before trying to fetch groups
+      if (!user || !user.uid) {
+        console.log("User not available, skipping user groups fetch");
+        return;
+      }
+      
       // Fetch user's groups to understand their group membership
       const userDoc = await getDoc(doc(db, "users", user.uid));
       if (userDoc.exists()) {
@@ -111,7 +117,7 @@ export default function FitCard({ fit, onCommentSectionOpen, onOpenCommentModal 
 
     // Create a copy of ratings and add/update the user's rating
     const ratingsCopy = { ...fit.ratings };
-    if (userRatingValue) {
+    if (userRatingValue && user && user.uid) {
       ratingsCopy[user.uid] = { rating: userRatingValue, timestamp: new Date() };
     }
 

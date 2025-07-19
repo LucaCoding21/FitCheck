@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,8 +8,11 @@ import {
   StatusBar,
   Animated,
   TouchableOpacity,
+  SafeAreaView,
+  RefreshControl,
 } from 'react-native';
-import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
+import { Ionicons } from '@expo/vector-icons';
+import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { theme } from '../styles/theme';
@@ -17,7 +20,6 @@ import { theme } from '../styles/theme';
 // Helper function to get user's fits
 export const getMyFits = async (userId) => {
   try {
-    // Query fits for the specific user (simplified to avoid complex index)
     const fitsQuery = query(
       collection(db, 'fits'),
       where('userId', '==', userId)
@@ -29,11 +31,11 @@ export const getMyFits = async (userId) => {
       ...doc.data()
     }));
 
-    // Sort by most recent first (client-side sorting)
+    // Sort by most recent first
     const sortedFits = fits.sort((a, b) => {
       const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
       const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
-      return dateB - dateA; // Descending order (newest first)
+      return dateB - dateA;
     });
 
     return sortedFits;
@@ -70,13 +72,11 @@ const formatDate = (date) => {
 // Helper function to format rating
 const formatRating = (fit) => {
   if (!fit.ratingCount || fit.ratingCount < 1) {
-    return 'Not yet rated';
+    return null;
   }
   
-  // Try to use fairRating first, with fallback calculation
   let rating = fit.fairRating || 0;
   
-  // If fairRating is 0 or missing, calculate from ratings object
   if (rating === 0 && fit.ratings && Object.keys(fit.ratings).length > 0) {
     const ratings = Object.values(fit.ratings)
       .filter(r => r && typeof r.rating === 'number')
@@ -84,110 +84,160 @@ const formatRating = (fit) => {
     
     if (ratings.length > 0) {
       rating = ratings.reduce((sum, r) => sum + r, 0) / ratings.length;
-      rating = Math.round(rating * 10) / 10; // Round to 1 decimal place
+      rating = Math.round(rating * 10) / 10;
     }
   }
   
-  return `${rating.toFixed(1)} ★ (${fit.ratingCount} ratings)`;
+  return rating;
 };
 
 export default function ProfileScreen({ navigation }) {
   const { user } = useAuth();
   const [myFits, setMyFits] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [fadeAnim] = useState(new Animated.Value(0));
-  const [slideAnim] = useState(new Animated.Value(50));
+  const [slideAnim] = useState(new Animated.Value(30));
+  const unsubscribeRef = useRef(null);
 
   useEffect(() => {
     if (user?.uid) {
-      fetchMyFits();
+      const unsubscribe = setupRealTimeListener();
+      unsubscribeRef.current = unsubscribe;
       animateIn();
+      
+      // Cleanup function to unsubscribe when component unmounts or user changes
+      return () => {
+        if (unsubscribeRef.current) {
+          unsubscribeRef.current();
+        }
+      };
     }
   }, [user]);
+
+  // Add focus listener to ensure data is fresh when navigating back to profile
+  useEffect(() => {
+    const unsubscribeFocus = navigation.addListener('focus', () => {
+      // The real-time listener should already be active, but this ensures fresh data
+      if (user?.uid && !loading) {
+        // Trigger a brief refresh to ensure we have the latest data
+        setRefreshing(true);
+        setTimeout(() => {
+          setRefreshing(false);
+        }, 500);
+      }
+    });
+
+    return unsubscribeFocus;
+  }, [navigation, user, loading]);
 
   const animateIn = () => {
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 800,
+        duration: 600,
         useNativeDriver: true,
       }),
       Animated.timing(slideAnim, {
         toValue: 0,
-        duration: 600,
+        duration: 500,
         useNativeDriver: true,
       }),
     ]).start();
   };
 
-  const fetchMyFits = async () => {
-    if (!user?.uid) return;
+  const setupRealTimeListener = () => {
+    if (!user?.uid) return null;
 
     setLoading(true);
-    try {
-      const fits = await getMyFits(user.uid);
-      console.log('[Profile] Fetched fits:', fits.map(fit => ({
-        id: fit.id,
-        ratingCount: fit.ratingCount,
-        fairRating: fit.fairRating,
-        ratings: fit.ratings,
-        caption: fit.caption
-      })));
+    
+    // Create real-time query for user's fits
+    const fitsQuery = query(
+      collection(db, 'fits'),
+      where('userId', '==', user.uid),
+      orderBy('createdAt', 'desc')
+    );
+
+    // Set up real-time listener
+    const unsubscribe = onSnapshot(fitsQuery, (snapshot) => {
+      const fits = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      
       setMyFits(fits);
-    } catch (error) {
-      console.error('Error fetching my fits:', error);
-    } finally {
       setLoading(false);
-    }
+    }, (error) => {
+      console.error('Error listening to fits:', error);
+      setLoading(false);
+    });
+
+    // Return the unsubscribe function
+    return unsubscribe;
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    // The real-time listener will automatically update the data
+    // We just need to show the refresh indicator briefly
+    setTimeout(() => {
+      setRefreshing(false);
+    }, 1000);
   };
 
   const renderFitItem = ({ item, index }) => {
+    const rating = formatRating(item);
+    
     return (
-      <Animated.View
-        style={[
-          styles.fitItem,
-          {
-            opacity: fadeAnim,
-            transform: [{ translateY: slideAnim }],
-          },
-        ]}
+      <TouchableOpacity
+        onPress={() => navigation.navigate('FitDetails', { fitId: item.id })}
+        activeOpacity={0.9}
+        style={styles.fitItemContainer}
       >
-        {/* Fit Image */}
-        <View style={styles.imageContainer}>
-          {item.imageURL ? (
-            <Image
-              source={{ uri: item.imageURL }}
-              style={styles.fitImage}
-              resizeMode="cover"
-            />
-          ) : (
-            <View style={styles.placeholderImage}>
-              <Text style={styles.placeholderText}>📸</Text>
-            </View>
-          )}
-        </View>
+        <Animated.View
+          style={[
+            styles.fitItem,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }],
+            },
+          ]}
+        >
+          {/* Fit Image */}
+          <View style={styles.imageContainer}>
+            {item.imageURL ? (
+              <Image
+                source={{ uri: item.imageURL }}
+                style={styles.fitImage}
+                resizeMode="cover"
+              />
+            ) : (
+              <View style={styles.placeholderImage}>
+                <Ionicons name="camera-outline" size={32} color="#666" />
+              </View>
+            )}
+            
+            {/* Rating Badge */}
+            {rating && (
+              <View style={styles.ratingBadge}>
+                <Ionicons name="star" size={12} color="#CD9F3E" />
+                <Text style={styles.ratingText}>{rating.toFixed(1)}</Text>
+              </View>
+            )}
+          </View>
 
-        {/* Fit Details */}
-        <View style={styles.fitDetails}>
-          <View style={styles.fitHeader}>
-            <Text style={styles.caption} numberOfLines={1}>
+          {/* Fit Info */}
+          <View style={styles.fitInfo}>
+            <Text style={styles.caption} numberOfLines={2}>
               {item.caption || 'No caption'}
             </Text>
-            <Text style={styles.tag}>
-              #{item.tag || 'no-tag'}
-            </Text>
+            <View style={styles.fitMeta}>
+              <Text style={styles.tag}>#{item.tag || 'no-tag'}</Text>
+              <Text style={styles.date}>{formatDate(item.createdAt)}</Text>
+            </View>
           </View>
-          
-          <View style={styles.fitFooter}>
-            <Text style={styles.date}>
-              {formatDate(item.createdAt)}
-            </Text>
-            <Text style={styles.rating}>
-              {formatRating(item)}
-            </Text>
-          </View>
-        </View>
-      </Animated.View>
+        </Animated.View>
+      </TouchableOpacity>
     );
   };
 
@@ -202,50 +252,69 @@ export default function ProfileScreen({ navigation }) {
       ]}
     >
       <View style={styles.emptyIcon}>
-        <Text style={styles.emptyIconText}>👕</Text>
+        <Ionicons name="shirt-outline" size={48} color="#666" />
       </View>
-      <Text style={styles.emptyTitle}>No Fits Yet</Text>
+      <Text style={styles.emptyTitle}>Your Fit Archive</Text>
       <Text style={styles.emptyText}>
-        Start sharing your style with your group!
+        Start sharing your style to build your personal fit collection
       </Text>
       <TouchableOpacity 
         style={styles.postFitButton}
         onPress={() => navigation.navigate('PostFit')}
+        activeOpacity={0.8}
       >
+        <Ionicons name="add" size={20} color="#FFFFFF" style={styles.buttonIcon} />
         <Text style={styles.postFitButtonText}>Post Your First Fit</Text>
       </TouchableOpacity>
     </Animated.View>
   );
 
+  const renderHeader = () => (
+    <Animated.View
+      style={[
+        styles.header,
+        {
+          opacity: fadeAnim,
+          transform: [{ translateY: slideAnim }],
+        },
+      ]}
+    >
+      <View style={styles.headerContent}>
+        <View style={styles.headerText}>
+          <Text style={styles.headerTitle}>Profile</Text>
+          <Text style={styles.headerSubtitle}>
+            {myFits.length} fit{myFits.length !== 1 ? 's' : ''} in your archive
+          </Text>
+        </View>
+        <TouchableOpacity 
+          style={styles.settingsButton}
+          onPress={() => {/* TODO: Add settings navigation */}}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="settings-outline" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+      </View>
+    </Animated.View>
+  );
+
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <Text style={styles.loadingText}>Loading your fits...</Text>
-      </View>
+      <SafeAreaView style={styles.loadingContainer}>
+        <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
+        <View style={styles.loadingContent}>
+          <Ionicons name="shirt-outline" size={48} color="#666" />
+          <Text style={styles.loadingText}>Loading your archive...</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#1a1a1a" />
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
       
-      {/* Header */}
-      <Animated.View
-        style={[
-          styles.header,
-          {
-            opacity: fadeAnim,
-            transform: [{ translateY: slideAnim }],
-          },
-        ]}
-      >
-        <Text style={styles.headerTitle}>My Fits</Text>
-        <Text style={styles.headerSubtitle}>
-          {myFits.length} fit{myFits.length !== 1 ? 's' : ''} posted
-        </Text>
-      </Animated.View>
+      {renderHeader()}
 
-      {/* Content */}
       <Animated.View
         style={[
           styles.content,
@@ -266,64 +335,93 @@ export default function ProfileScreen({ navigation }) {
             contentContainerStyle={styles.listContainer}
             numColumns={2}
             columnWrapperStyle={styles.row}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor="#FFFFFF"
+                colors={["#FFFFFF"]}
+              />
+            }
           />
         )}
       </Animated.View>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: theme.colors.background,
   },
+  
+  // Header styles
   header: {
-    paddingTop: 60,
+    paddingTop: 20,
     paddingHorizontal: 20,
-    paddingBottom: 20,
+    paddingBottom: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  headerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  headerText: {
+    flex: 1,
   },
   headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
+    fontSize: 28,
+    fontWeight: '700',
+    color: theme.colors.text,
     marginBottom: 4,
   },
   headerSubtitle: {
     fontSize: 16,
-    color: '#CCCCCC',
+    color: theme.colors.textSecondary,
+    fontWeight: '400',
   },
-  content: {
-    flex: 1,
-    paddingHorizontal: 20,
-  },
-  loadingContainer: {
-    flex: 1,
+  settingsButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: theme.colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#1a1a1a',
+    ...theme.shadows.sm,
   },
-  loadingText: {
-    fontSize: 16,
-    color: '#CCCCCC',
+
+  // Content styles
+  content: {
+    flex: 1,
   },
   listContainer: {
-    paddingBottom: 20,
+    paddingHorizontal: 16,
+    paddingTop: 20,
+    paddingBottom: 100, // Extra padding for bottom navigation
   },
   row: {
     justifyContent: 'space-between',
   },
-  fitItem: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: 12,
-    marginBottom: 16,
+
+  // Fit item styles
+  fitItemContainer: {
     width: '48%',
+    marginBottom: 20,
+  },
+  fitItem: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.lg,
     overflow: 'hidden',
+    ...theme.shadows.sm,
   },
   imageContainer: {
+    position: 'relative',
     width: '100%',
-    height: 150,
-    backgroundColor: '#444444',
+    aspectRatio: 1,
+    backgroundColor: '#333',
   },
   fitImage: {
     width: '100%',
@@ -332,42 +430,54 @@ const styles = StyleSheet.create({
   placeholderImage: {
     width: '100%',
     height: '100%',
-    backgroundColor: '#444444',
+    backgroundColor: '#333',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  placeholderText: {
-    fontSize: 32,
+  ratingBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  fitDetails: {
+  ratingText: {
+    fontSize: 12,
+    color: '#FFFFFF',
+    fontWeight: '600',
+    marginLeft: 2,
+  },
+  fitInfo: {
     padding: 12,
-  },
-  fitHeader: {
-    marginBottom: 8,
   },
   caption: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#FFFFFF',
-    marginBottom: 4,
+    color: theme.colors.text,
+    lineHeight: 18,
+    marginBottom: 8,
+  },
+  fitMeta: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   tag: {
     fontSize: 12,
-    color: '#B5483D',
+    color: theme.colors.primary,
     fontWeight: '500',
   },
-  fitFooter: {
-    justifyContent: 'space-between',
-  },
   date: {
-    fontSize: 12,
-    color: '#999999',
-    marginBottom: 4,
+    fontSize: 11,
+    color: theme.colors.textMuted,
+    fontWeight: '400',
   },
-  rating: {
-    fontSize: 12,
-    color: '#CCCCCC',
-  },
+
+  // Empty state styles
   emptyState: {
     flex: 1,
     justifyContent: 'center',
@@ -375,41 +485,60 @@ const styles = StyleSheet.create({
     paddingHorizontal: 40,
   },
   emptyIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#2a2a2a',
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: theme.colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 20,
-  },
-  emptyIconText: {
-    fontSize: 40,
+    marginBottom: 24,
+    ...theme.shadows.md,
   },
   emptyTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
+    fontSize: 24,
+    fontWeight: '700',
+    color: theme.colors.text,
     marginBottom: 12,
     textAlign: 'center',
   },
   emptyText: {
     fontSize: 16,
-    color: '#CCCCCC',
+    color: theme.colors.textSecondary,
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 32,
     lineHeight: 24,
   },
   postFitButton: {
-    backgroundColor: '#B5483D',
+    backgroundColor: theme.colors.primary,
     paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
+    paddingVertical: 14,
+    borderRadius: theme.borderRadius.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    ...theme.shadows.md,
+  },
+  buttonIcon: {
+    marginRight: 8,
   },
   postFitButtonText: {
     fontSize: 16,
     color: '#FFFFFF',
     fontWeight: '600',
-    textAlign: 'center',
+  },
+
+  // Loading styles
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+  },
+  loadingContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 16,
+    color: theme.colors.textSecondary,
+    marginTop: 16,
   },
 }); 

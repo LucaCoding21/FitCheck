@@ -92,6 +92,7 @@ export default function CommentInput({ fitId, onCommentAdded, placeholder = "Add
   };
 
   const isSubmitDisabled = !commentText.trim() || isSubmitting;
+  const canSend = commentText.trim().length > 0 && !isSubmitting;
 
   return (
     <View style={styles.inputContainer}>
@@ -131,7 +132,7 @@ export default function CommentInput({ fitId, onCommentAdded, placeholder = "Add
       <Pressable
         style={({ pressed }) => [
           styles.sendButton,
-          isSubmitDisabled && styles.sendButtonDisabled,
+          canSend ? styles.sendButtonActive : styles.sendButtonDisabled,
           pressed && { opacity: 0.8 }
         ]}
         onPress={handleSubmitComment}
@@ -141,10 +142,10 @@ export default function CommentInput({ fitId, onCommentAdded, placeholder = "Add
         <Text
           style={[
             styles.sendButtonText,
-            isSubmitDisabled && styles.sendButtonTextDisabled,
+            canSend ? styles.sendButtonTextActive : styles.sendButtonTextDisabled,
           ]}
         >
-          {isSubmitting ? "..." : "Send"}
+          {isSubmitting ? "..." : "→"}
         </Text>
       </Pressable>
     </View>
@@ -201,22 +202,30 @@ const styles = StyleSheet.create({
     textAlignVertical: "top",
   },
   sendButton: {
-    backgroundColor: '#B5483D',
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    minWidth: 50,
+    backgroundColor: '#2A2A2A',
+    borderRadius: 16,
+    width: 32,
+    height: 32,
     alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   sendButtonDisabled: {
     backgroundColor: '#666666',
   },
+  sendButtonActive: {
+    backgroundColor: theme.colors.primary,
+  },
   sendButtonText: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#FFFFFF',
     fontWeight: "600",
   },
   sendButtonTextDisabled: {
     color: "rgba(255, 255, 255, 0.5)",
+  },
+  sendButtonTextActive: {
+    color: '#FFFFFF',
   },
 }); 

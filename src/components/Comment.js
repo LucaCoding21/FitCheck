@@ -58,8 +58,8 @@ export default function Comment({ comment }) {
 const styles = StyleSheet.create({
   container: {
     flexDirection: "row",
-    paddingVertical: 12,
-    paddingHorizontal: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 0,
   },
   avatar: {
     width: 32,
