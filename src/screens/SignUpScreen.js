@@ -15,11 +15,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
+import { useAuth } from '../contexts/AuthContext';
 import KeyboardAwareContainer from '../components/KeyboardAwareContainer';
 
 const { width, height } = Dimensions.get('window');
 
 const SignUpScreen = ({ navigation }) => {
+  const { setJustSignedUp } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -110,10 +112,12 @@ const SignUpScreen = ({ navigation }) => {
         email,
         createdAt: new Date(),
         groups: [],
+        profileCompleted: false, // Mark profile as not completed
       });
       
-      // Navigate to profile setup
-      navigation.replace('ProfileSetup');
+      // AuthContext will automatically navigate to Main when user becomes authenticated
+      // The MainNavigator will check if profile is completed and show appropriate screen
+      setJustSignedUp(true); // Set the flag in AuthContext
     } catch (error) {
       let errorMessage = 'An error occurred during sign up';
       if (error.code === 'auth/email-already-in-use') {

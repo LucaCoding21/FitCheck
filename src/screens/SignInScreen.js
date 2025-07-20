@@ -84,8 +84,7 @@ const SignInScreen = ({ navigation }) => {
     
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      // Navigate to main app
-              navigation.replace('Main');
+      // Navigation will happen automatically when AuthContext updates
     } catch (error) {
       let errorMessage = 'An error occurred during sign in';
       if (error.code === 'auth/user-not-found') {
@@ -131,7 +130,7 @@ const SignInScreen = ({ navigation }) => {
   };
 
   const handleClose = () => {
-    navigation.goBack();
+    navigation.navigate('Onboarding');
   };
 
   return (

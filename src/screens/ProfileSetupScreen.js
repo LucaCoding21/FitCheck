@@ -17,11 +17,13 @@ import * as ImagePicker from 'expo-image-picker';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { doc, updateDoc } from 'firebase/firestore';
 import { storage, db, auth } from '../config/firebase';
+import { useAuth } from '../contexts/AuthContext';
 import KeyboardAwareContainer from '../components/KeyboardAwareContainer';
 
 const { width, height } = Dimensions.get('window');
 
 const ProfileSetupScreen = ({ navigation, route }) => {
+  const { setJustSignedUp } = useAuth();
   const [username, setUsername] = useState('');
   const [profileImage, setProfileImage] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -124,13 +126,26 @@ const ProfileSetupScreen = ({ navigation, route }) => {
     
     try {
       const userId = auth.currentUser?.uid;
-      if (!userId) throw new Error('User not authenticated');
+      if (!userId) {
+        throw new Error('User not authenticated');
+      }
 
       let profileImageURL = null;
       
       // Upload image if selected
       if (profileImage) {
-        profileImageURL = await uploadImageToFirebase(profileImage);
+        try {
+          profileImageURL = await uploadImageToFirebase(profileImage);
+        } catch (uploadError) {
+          console.error('Image upload failed, continuing without image:', uploadError);
+          // Continue without the image rather than failing the entire profile setup
+          profileImageURL = null;
+          Alert.alert(
+            'Image Upload Failed', 
+            'Your profile will be created without a profile picture. You can add one later.',
+            [{ text: 'OK' }]
+          );
+        }
       }
 
       // Update user document in Firestore
@@ -141,19 +156,24 @@ const ProfileSetupScreen = ({ navigation, route }) => {
         updatedAt: new Date(),
       });
 
-      // Navigate to main app
-              navigation.replace('Main');
+      // Clear the justSignedUp flag
+      setJustSignedUp(false);
+
+      // Force a small delay to ensure state updates are processed
+      setTimeout(() => {
+        setLoading(false);
+      }, 1000);
     } catch (error) {
       console.error('Error completing profile:', error);
       Alert.alert('Error', 'Failed to complete profile setup. Please try again.');
+      setLoading(false);
     }
-    
-    setLoading(false);
   };
 
-  const handleBack = () => {
-    navigation.goBack();
-  };
+  // Remove back button functionality - users must complete profile setup
+  // const handleBack = () => {
+  //   navigation.goBack();
+  // };
 
   return (
     <KeyboardAwareContainer>
@@ -169,14 +189,6 @@ const ProfileSetupScreen = ({ navigation, route }) => {
             },
           ]}
         >
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={handleBack}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
-          
           <Text style={styles.title}>Create your Profile</Text>
         </Animated.View>
 
@@ -256,7 +268,10 @@ const ProfileSetupScreen = ({ navigation, route }) => {
           ]}
         >
           <TouchableOpacity
-            style={styles.completeButton}
+            style={[
+              styles.completeButton,
+              loading && styles.completeButtonDisabled
+            ]}
             onPress={handleComplete}
             disabled={loading}
             activeOpacity={0.8}
@@ -282,8 +297,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 40,
   },
   headerSection: {
-    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     paddingTop: 20,
     paddingBottom: 40,
   },
@@ -294,7 +309,6 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   title: {
-    flex: 1,
     fontSize: 20,
     fontWeight: '600',
     color: '#FFFFFF',
@@ -394,6 +408,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 8,
+  },
+  completeButtonDisabled: {
+    opacity: 0.7,
+    backgroundColor: '#3a3a3a',
   },
   completeButtonText: {
     color: '#FFFFFF',

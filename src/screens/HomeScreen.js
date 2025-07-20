@@ -604,12 +604,12 @@ const styles = StyleSheet.create({
 
   // Groups section
   groupsSection: {
-    marginBottom: 20,
+    marginBottom: 8,
   },
   groupsTitle: {
     fontSize: 16,
-    color: '#FFFFFF',
-    marginBottom: 12,
+    color: '#6C6C6C',
+    marginBottom: 21,
     opacity: 0.8,
   },
   groupsScrollView: {
@@ -630,8 +630,8 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   groupButtonSelected: {
-    backgroundColor: '#B5483D',
-    borderColor: '#B5483D',
+    backgroundColor: '#7b362f',
+    borderColor: '#b5493e',
   },
   groupButtonText: {
     fontSize: 14,
@@ -660,7 +660,7 @@ const styles = StyleSheet.create({
   // Content styles
   contentContainer: {
     flex: 1,
-    paddingHorizontal: 5,
+    paddingHorizontal: 7,
   },
   feedContainer: {
     paddingTop: 7,

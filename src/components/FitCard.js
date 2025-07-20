@@ -359,7 +359,7 @@ export default function FitCard({ fit, onCommentSectionOpen, onOpenCommentModal 
         <View style={styles.headerRating}>
           <Text style={styles.starIcon}>★</Text>
           <Text style={styles.ratingText}>
-            {fairRating.toFixed(1)} 
+            {fairRating.toFixed(1)} {' '}
             <Text style={styles.ratingCount}>
               ({ratingCount})
             </Text>
@@ -437,7 +437,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#2A2A2A',
     paddingHorizontal: 16,
     borderRadius: 12,
-    marginBottom: 16,
+    marginBottom: 20,
     marginHorizontal: 8,
   },
 
@@ -461,12 +461,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#6366F1',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 10,
   },
   avatarImage: {
     width: 40,
     height: 40,
     borderRadius: 20,
+    marginRight: 5,
   },
   avatarText: {
     fontSize: 16,
@@ -478,7 +479,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   username: {
-    fontSize: 16,
+    fontSize: 15,
     color: '#FFFFFF',
     fontWeight: '600',
     marginBottom: 2,
@@ -486,7 +487,7 @@ const styles = StyleSheet.create({
     textAlignVertical: 'center',
   },
   timestamp: {
-    fontSize: 14,
+    fontSize: 12,
     color: '#71717A',
     includeFontPadding: false,
     textAlignVertical: 'center',
@@ -509,6 +510,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#71717A',
     fontWeight: '400',
+    marginLeft: 4,
   },
 
   // Content section

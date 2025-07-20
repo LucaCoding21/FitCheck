@@ -13,6 +13,7 @@ import ProfileScreen from '../screens/ProfileScreen';
 import LeaderboardScreen from '../components/LeaderboardScreen';
 import NoGroupsScreen from '../screens/NoGroupsScreen';
 import FitDetailsScreen from '../screens/FitDetailsScreen';
+import ProfileSetupScreen from '../screens/ProfileSetupScreen';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -99,6 +100,7 @@ function CustomTabBar({ state, descriptors, navigation }) {
         shadowOpacity: 0.3,
         shadowRadius: 8,
         elevation: 8,
+        minHeight: 60,
       }}>
         {state.routes.map((route, index) => {
           const { options } = descriptors[route.key];
@@ -125,7 +127,9 @@ function CustomTabBar({ state, descriptors, navigation }) {
                 style={{
                   alignItems: 'center',
                   justifyContent: 'center',
-                  marginTop: -20,
+                  marginTop: -10,
+                  width: 56,
+                  height: 56,
                 }}
               >
                 <View style={{
@@ -145,6 +149,8 @@ function CustomTabBar({ state, descriptors, navigation }) {
                     fontSize: 24, 
                     color: '#FFFFFF',
                     fontWeight: 'bold',
+                    textAlign: 'center',
+                    lineHeight: 24,
                   }}>
                     +
                   </Text>
@@ -177,6 +183,7 @@ function CustomTabBar({ state, descriptors, navigation }) {
                   alignItems: 'center',
                   justifyContent: 'center',
                   paddingVertical: 8,
+                  minHeight: 44,
                 }}
               >
                 <Animated.View style={{
@@ -222,15 +229,16 @@ function CustomTabBar({ state, descriptors, navigation }) {
 
           // Other tabs with PNG icons
           return (
-            <TouchableOpacity
-              key={route.key}
-              onPress={onPress}
-              style={{
-                alignItems: 'center',
-                justifyContent: 'center',
-                paddingVertical: 8,
-              }}
-            >
+                          <TouchableOpacity
+                key={route.key}
+                onPress={onPress}
+                style={{
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  paddingVertical: 8,
+                  minHeight: 44,
+                }}
+              >
               <Animated.View style={{
                 width: 32,
                 height: 32,
@@ -301,27 +309,64 @@ function MainTabs({ route }) {
 }
 
 function MainNavigator({ route }) {
-  const { user } = useAuth();
+  const { user, justSignedUp } = useAuth();
   const [userGroups, setUserGroups] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [userData, setUserData] = useState(null);
   const selectedGroup = route?.params?.selectedGroup;
 
   useEffect(() => {
-    if (user) {
+    if (user?.uid) {
+      fetchUserData();
       fetchUserGroups();
+    } else if (!user) {
+      setLoading(false);
     }
   }, [user]);
+
+  // Add effect to refresh user data when justSignedUp changes
+  useEffect(() => {
+    if (user?.uid && !justSignedUp) {
+      fetchUserData();
+    }
+  }, [justSignedUp, user]);
 
   // Refresh groups when screen comes into focus
   useFocusEffect(
     React.useCallback(() => {
-      if (user) {
+      if (user?.uid) {
+        fetchUserData();
         fetchUserGroups();
       }
     }, [user])
   );
 
+  const fetchUserData = async () => {
+    if (!user?.uid) {
+      return;
+    }
+
+    try {
+      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      if (userDoc.exists()) {
+        const data = userDoc.data();
+        setUserData(data);
+      } else {
+        // If user document doesn't exist, set empty object to prevent infinite loading
+        setUserData({});
+      }
+    } catch (error) {
+      console.error('Error fetching user data:', error);
+      // Set empty object on error to prevent infinite loading
+      setUserData({});
+    }
+  };
+
   const fetchUserGroups = async () => {
+    if (!user?.uid) {
+      return;
+    }
+
     try {
       const groupsQuery = query(
         collection(db, 'groups'),
@@ -337,6 +382,17 @@ function MainNavigator({ route }) {
     }
   };
 
+  // Add timeout to prevent infinite loading
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      if (loading) {
+        setLoading(false);
+      }
+    }, 10000); // 10 second timeout
+
+    return () => clearTimeout(timeout);
+  }, [loading]);
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -345,9 +401,17 @@ function MainNavigator({ route }) {
     );
   }
 
+  // Check if profile is completed
+  // For new users (justSignedUp), always show ProfileSetup
+  // For returning users, check if profile is completed
+  const shouldShowProfileSetup = justSignedUp || (userData && userData.profileCompleted !== true);
+  
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
-      {userGroups.length === 0 ? (
+      {shouldShowProfileSetup ? (
+        // Profile not completed - show ProfileSetup
+        <Stack.Screen name="ProfileSetup" component={ProfileSetupScreen} />
+      ) : userGroups.length === 0 ? (
         // No groups - show screens without tab bar
         <>
           <Stack.Screen name="NoGroups" component={NoGroupsScreen} />

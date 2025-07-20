@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
   SafeAreaView,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { collection, query, where, orderBy, onSnapshot, getDoc, doc } from 'firebase/firestore';
@@ -115,6 +116,11 @@ export default function ProfileScreen({ navigation }) {
           unsubscribeRef.current();
         }
       };
+    } else {
+      // Reset state when user is not available
+      setMyFits([]);
+      setUserData(null);
+      setLoading(false);
     }
   }, [user]);
 
@@ -135,6 +141,11 @@ export default function ProfileScreen({ navigation }) {
   }, [navigation, user, loading]);
 
   const fetchUserData = async () => {
+    if (!user?.uid) {
+      console.log('User not available, skipping user data fetch');
+      return;
+    }
+
     try {
       const userDoc = await getDoc(doc(db, 'users', user.uid));
       if (userDoc.exists()) {
@@ -161,7 +172,10 @@ export default function ProfileScreen({ navigation }) {
   };
 
   const setupRealTimeListener = () => {
-    if (!user?.uid) return null;
+    if (!user?.uid) {
+      console.log('User not available, skipping real-time listener setup');
+      return null;
+    }
 
     setLoading(true);
     
@@ -200,12 +214,28 @@ export default function ProfileScreen({ navigation }) {
   };
 
   const handleSignOut = async () => {
-    try {
-      await signOut(auth);
-      // The AuthContext will handle the navigation to sign-in screen
-    } catch (error) {
-      console.error('Error signing out:', error);
-    }
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await signOut(auth);
+              // The AuthContext will handle the navigation to sign-in screen
+            } catch (error) {
+              console.error('Error signing out:', error);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const renderFitItem = ({ item, index }) => {

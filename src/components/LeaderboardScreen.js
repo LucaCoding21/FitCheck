@@ -8,6 +8,8 @@ import {
   TouchableOpacity,
   StatusBar,
   Animated,
+  ScrollView,
+  Modal,
 } from 'react-native';
 import { collection, query, where, orderBy, getDocs, getDoc, doc } from 'firebase/firestore';
 import { db } from '../config/firebase';
@@ -36,6 +38,21 @@ const calculateDisplayRating = (fit) => {
   return '0.0';
 };
 
+// Helper function to calculate dynamic rating threshold based on group size
+const getRatingThreshold = (groupSize) => {
+  // For small groups (1-3 members): require 1 rating
+  if (groupSize <= 3) return 1;
+  
+  // For medium groups (4-6 members): require 2 ratings
+  if (groupSize <= 6) return 2;
+  
+  // For larger groups (7-10 members): require 3 ratings
+  if (groupSize <= 10) return 3;
+  
+  // For very large groups (11+ members): require 4 ratings (maximum)
+  return 4;
+};
+
 // Helper function to get leaderboard fits
 export const getLeaderboardFits = async (groupId) => {
   try {
@@ -46,6 +63,11 @@ export const getLeaderboardFits = async (groupId) => {
     // Get tomorrow's date at midnight (local timezone)
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
+
+    // Get group size to calculate dynamic threshold
+    const groupDoc = await getDoc(doc(db, 'groups', groupId));
+    const groupSize = groupDoc.exists() ? (groupDoc.data().memberCount || 1) : 1;
+    const ratingThreshold = getRatingThreshold(groupSize);
 
     // Query fits for the specific group (simplified to avoid complex index)
     const fitsQuery = query(
@@ -59,14 +81,14 @@ export const getLeaderboardFits = async (groupId) => {
       ...doc.data()
     }));
 
-    // Filter for today's fits, 3+ ratings, and sort by fair rating
+    // Filter for today's fits with dynamic rating threshold, and sort by fair rating
     const todayFits = fits.filter(fit => {
       const fitDate = fit.createdAt?.toDate();
       return fitDate && fitDate >= today && fitDate < tomorrow;
     });
 
     const eligibleFits = todayFits
-      .filter(fit => (fit.ratingCount || 0) >= 3)
+      .filter(fit => (fit.ratingCount || 0) >= ratingThreshold)
       .sort((a, b) => (b.fairRating || 0) - (a.fairRating || 0))
       .slice(0, 10); // Show top 10 instead of just 3
 
@@ -86,7 +108,8 @@ export const getAllGroupsLeaderboardFits = async (userGroups) => {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    const allFits = [];
+    // Use a Map to ensure unique fits by ID
+    const uniqueFitsMap = new Map();
     
     for (const group of userGroups) {
       const fitsQuery = query(
@@ -100,21 +123,77 @@ export const getAllGroupsLeaderboardFits = async (userGroups) => {
         ...doc.data()
       }));
 
-      allFits.push(...groupFits);
+      // Add fits to map, using fit ID as key to prevent duplicates
+      groupFits.forEach(fit => {
+        if (!uniqueFitsMap.has(fit.id)) {
+          uniqueFitsMap.set(fit.id, fit);
+        }
+      });
     }
 
-    // Filter for today's fits, 3+ ratings, and sort by fair rating
+    // Convert map values back to array
+    const allFits = Array.from(uniqueFitsMap.values());
+
+    // Filter for today's fits with dynamic rating thresholds per group
     const todayFits = allFits.filter(fit => {
       const fitDate = fit.createdAt?.toDate();
       return fitDate && fitDate >= today && fitDate < tomorrow;
     });
 
-    const eligibleFits = todayFits
-      .filter(fit => (fit.ratingCount || 0) >= 3)
-      .sort((a, b) => (b.fairRating || 0) - (a.fairRating || 0))
+    // Apply dynamic threshold filtering based on each fit's group
+    const eligibleFits = [];
+    for (const fit of todayFits) {
+      // Find the group this fit belongs to
+      const fitGroup = userGroups.find(group => 
+        fit.groupIds && fit.groupIds.includes(group.id)
+      );
+      
+      if (fitGroup) {
+        const groupSize = fitGroup.memberCount || 1;
+        const ratingThreshold = getRatingThreshold(groupSize);
+        
+        if ((fit.ratingCount || 0) >= ratingThreshold) {
+          // Add group context to the fit for fair comparison
+          eligibleFits.push({
+            ...fit,
+            _groupSize: groupSize,
+            _ratingThreshold: ratingThreshold,
+            _groupName: fitGroup.name
+          });
+        }
+      }
+    }
+
+    // Sort by adjusted rating (normalized for group size) and return top 10
+    const sortedFits = eligibleFits
+      .map(fit => {
+        // Calculate adjusted rating to normalize for group size differences
+        const baseRating = fit.fairRating || 0;
+        const ratingCount = fit.ratingCount || 0;
+        const groupSize = fit._groupSize;
+        
+        // Bonus for higher rating counts relative to group size
+        const ratingRatio = ratingCount / groupSize;
+        const ratingBonus = Math.min(ratingRatio * 0.5, 0.5); // Max 0.5 bonus
+        
+        // Penalty for very small groups to prevent gaming
+        const smallGroupPenalty = groupSize <= 3 ? 0.3 : 0;
+        
+        const adjustedRating = baseRating + ratingBonus - smallGroupPenalty;
+        
+        // Cap the adjusted rating at 5.0 stars maximum
+        const cappedAdjustedRating = Math.min(adjustedRating, 5.0);
+        
+        return {
+          ...fit,
+          _adjustedRating: cappedAdjustedRating
+        };
+      })
+      .sort((a, b) => b._adjustedRating - a._adjustedRating)
       .slice(0, 10);
 
-    return eligibleFits;
+    return sortedFits;
+
   } catch (error) {
     console.error('Error fetching all groups leaderboard fits:', error);
     throw error;
@@ -130,6 +209,7 @@ export default function LeaderboardScreen({ navigation, route }) {
   const [fadeAnim] = useState(new Animated.Value(0));
   const [slideAnim] = useState(new Animated.Value(50));
   const [countdownText, setCountdownText] = useState('');
+  const [showInfoModal, setShowInfoModal] = useState(false);
 
   // Calculate time until midnight
   const calculateTimeUntilMidnight = () => {
@@ -316,31 +396,101 @@ export default function LeaderboardScreen({ navigation, route }) {
     );
   };
 
-  const renderEmptyState = () => (
-    <Animated.View
-      style={[
-        styles.emptyState,
-        {
-          opacity: fadeAnim,
-          transform: [{ translateY: slideAnim }],
-        },
-      ]}
-    >
-      <View style={styles.emptyIcon}>
-        <Image 
-          source={require('../../assets/starman-whitelegs.png')} 
-          style={styles.emptyIconImage}
-        />
-      </View>
-      <Text style={styles.emptyTitle}>Ready to Compete?</Text>
-      <Text style={styles.emptyText}>
-        Post your fit and get 3+ ratings to climb the leaderboard
-      </Text>
-      <Text style={styles.emptySubtext}>
-        The competition heats up when everyone participates
-      </Text>
-    </Animated.View>
-  );
+  const renderEmptyState = () => {
+    // Calculate the required ratings based on selected group
+    let requiredRatings = 3; // Default fallback
+    let groupName = "your group";
+    
+    if (selectedGroup === 'all') {
+      // For "all groups" view, show a sophisticated message about fair comparison
+      requiredRatings = 1;
+      groupName = "any group";
+    } else {
+      // For specific group, get the actual threshold
+      const selectedGroupData = userGroups.find(group => group.id === selectedGroup);
+      if (selectedGroupData) {
+        const groupSize = selectedGroupData.memberCount || 1;
+        requiredRatings = getRatingThreshold(groupSize);
+        groupName = selectedGroupData.name;
+      }
+    }
+
+    // Create dynamic message based on required ratings
+    const getRatingMessage = (ratings) => {
+      if (ratings === 1) {
+        return "Post your fit and get 1 rating to climb the leaderboard";
+      } else if (ratings === 2) {
+        return "Post your fit and get 2+ ratings to climb the leaderboard";
+      } else if (ratings === 3) {
+        return "Post your fit and get 3+ ratings to climb the leaderboard";
+      } else {
+        return `Post your fit and get ${ratings}+ ratings to climb the leaderboard`;
+      }
+    };
+
+    const getSubtext = (ratings, groupName) => {
+      if (selectedGroup === 'all') {
+        return "Fits are ranked fairly across all your groups, with adjustments for group size and rating participation";
+      } else if (ratings === 1) {
+        return `Perfect for small groups like ${groupName} - just one rating gets you on the board!`;
+      } else if (ratings === 2) {
+        return `Medium-sized groups like ${groupName} need a bit more validation`;
+      } else if (ratings === 3) {
+        return `Larger groups like ${groupName} require more ratings for fair competition`;
+      } else {
+        return `Big groups like ${groupName} need ${ratings} ratings to ensure quality`;
+      }
+    };
+
+    return (
+      <Animated.View
+        style={[
+          styles.emptyState,
+          {
+            opacity: fadeAnim,
+            transform: [{ translateY: slideAnim }],
+          },
+        ]}
+      >
+        <View style={styles.emptyIcon}>
+          <Image 
+            source={require('../../assets/starman-whitelegs.png')} 
+            style={styles.emptyIconImage}
+          />
+        </View>
+        <Text style={styles.emptyTitle}>Ready to Compete?</Text>
+        <Text style={styles.emptyText}>
+          {getRatingMessage(requiredRatings)}
+        </Text>
+        <Text style={styles.emptySubtext}>
+          {getSubtext(requiredRatings, groupName)}
+        </Text>
+      </Animated.View>
+    );
+  };
+
+  const renderGroupButton = (group, isSelected, key) => {
+    const isAllGroup = group === 'all';
+    
+    return (
+      <TouchableOpacity
+        key={key || group}
+        style={[
+          styles.groupButton,
+          isSelected && styles.groupButtonSelected
+        ]}
+        onPress={() => setSelectedGroup(isAllGroup ? 'all' : group.id)}
+        activeOpacity={0.8}
+      >
+        <Text style={[
+          styles.groupButtonText,
+          isSelected && styles.groupButtonTextSelected
+        ]}>
+          {isAllGroup ? 'All' : group.name}
+        </Text>
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -356,7 +506,16 @@ export default function LeaderboardScreen({ navigation, route }) {
           },
         ]}
       >
-        <Text style={styles.title}>Daily Leaderboard</Text>
+        <View style={styles.headerTop}>
+          <Text style={styles.title}>Daily Leaderboard</Text>
+          <TouchableOpacity
+            style={styles.infoButton}
+            onPress={() => setShowInfoModal(true)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.infoButtonText}>?</Text>
+          </TouchableOpacity>
+        </View>
         <Text style={styles.subtitle}>
           Feed resets in <Text style={styles.countdownTime}>{countdownText}</Text>
         </Text>
@@ -373,39 +532,18 @@ export default function LeaderboardScreen({ navigation, route }) {
             },
           ]}
         >
-          <View style={styles.groupFilterTabs}>
-            <TouchableOpacity 
-              style={[
-                styles.groupFilterTab, 
-                selectedGroup === 'all' && styles.groupFilterTabActive
-              ]}
-              onPress={() => setSelectedGroup('all')}
-            >
-              <Text style={[
-                styles.groupFilterText,
-                selectedGroup === 'all' && styles.groupFilterTextActive
-              ]}>
-                All
-              </Text>
-            </TouchableOpacity>
-            {userGroups.map((group) => (
-              <TouchableOpacity 
-                key={group.id}
-                style={[
-                  styles.groupFilterTab, 
-                  selectedGroup === group.id && styles.groupFilterTabActive
-                ]}
-                onPress={() => setSelectedGroup(group.id)}
-              >
-                <Text style={[
-                  styles.groupFilterText,
-                  selectedGroup === group.id && styles.groupFilterTextActive
-                ]}>
-                  {group.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.groupsContainer}
+            style={styles.groupsScrollView}
+          >
+            {renderGroupButton('all', selectedGroup === 'all')}
+            {userGroups.map(group => 
+              renderGroupButton(group, selectedGroup === group.id, group.id)
+            )}
+          </ScrollView>
         </Animated.View>
       )}
 
@@ -451,6 +589,51 @@ export default function LeaderboardScreen({ navigation, route }) {
           />
         )}
       </Animated.View>
+
+      {/* Info Modal */}
+      <Modal
+        visible={showInfoModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowInfoModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowInfoModal(false)}
+        >
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>How Rankings Work</Text>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => setShowInfoModal(false)}
+              >
+                <Text style={styles.closeButtonText}>×</Text>
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.modalBody}>
+              <View style={styles.scoreCard}>
+                <Text style={styles.scoreTitle}>How You Rank</Text>
+                <Text style={styles.scoreText}>Your average stars + bonus for active groups</Text>
+                <Text style={styles.scoreNote}>Max 5.0 stars possible</Text>
+              </View>
+
+              <View style={styles.ruleCard}>
+                <Text style={styles.ruleTitle}>Rating Requirements</Text>
+                <Text style={styles.ruleText}>Small groups (1-3): 1 rating</Text>
+                <Text style={styles.ruleText}>Medium groups (4-6): 2 ratings</Text>
+                <Text style={styles.ruleText}>Large groups (7+): 3-4 ratings</Text>
+              </View>
+
+              <Text style={styles.modalSubtext}>
+                Fair for all group sizes, resets daily
+              </Text>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -485,30 +668,40 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 20,
   },
-  groupFilterTabs: {
+  groupsTitle: {
+    fontSize: 16,
+    color: '#6C6C6C',
+    marginBottom: 12,
+    opacity: 0.8,
+  },
+  groupsScrollView: {
+    flexGrow: 0,
+  },
+  groupsContainer: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+    alignItems: 'center',
+    paddingRight: 20, // Add padding to ensure last item is fully visible
   },
-  groupFilterTab: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+  groupButton: {
+    backgroundColor: '#2A2A2A',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
     borderRadius: 20,
-    backgroundColor: '#2a2a2a',
+    marginRight: 12,
     borderWidth: 1,
-    borderColor: '#2a2a2a',
+    borderColor: 'transparent',
   },
-  groupFilterTabActive: {
-    backgroundColor: '#B5483D',
-    borderColor: '#B5483D',
+  groupButtonSelected: {
+    backgroundColor: '#7b362f',
+    borderColor: '#b5493e',
   },
-  groupFilterText: {
+  groupButtonText: {
     fontSize: 14,
-    fontWeight: '600',
     color: '#FFFFFF',
+    fontWeight: '500',
   },
-  groupFilterTextActive: {
-    color: '#FFFFFF',
+  groupButtonTextSelected: {
+    fontWeight: '600',
   },
   content: {
     flex: 1,
@@ -676,5 +869,137 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '600',
     textAlign: 'center',
+  },
+  // Header info button styles
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  infoButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#2A2A2A',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#444444',
+  },
+  infoButtonText: {
+    fontSize: 18,
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#2A2A2A',
+    borderRadius: 20,
+    marginHorizontal: 24,
+    maxWidth: 420,
+    width: '100%',
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#444444',
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  closeButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#444444',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  closeButtonText: {
+    fontSize: 22,
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+  },
+  modalBody: {
+    padding: 24,
+  },
+  scoreCard: {
+    backgroundColor: '#333333',
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 16,
+  },
+  scoreTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  scoreText: {
+    fontSize: 15,
+    color: '#CCCCCC',
+    textAlign: 'center',
+    marginBottom: 8,
+    lineHeight: 20,
+  },
+  scoreNote: {
+    fontSize: 12,
+    color: '#999999',
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  ruleCard: {
+    backgroundColor: '#333333',
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 20,
+  },
+  ruleTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    marginBottom: 12,
+  },
+  ruleText: {
+    fontSize: 14,
+    color: '#CCCCCC',
+    marginBottom: 8,
+    lineHeight: 18,
+  },
+  modalSubtext: {
+    fontSize: 14,
+    color: '#999999',
+    textAlign: 'center',
+    marginTop: 10,
+    marginBottom: 10,
+    fontStyle: 'italic',
+    lineHeight: 20,
+  },
+  learnMoreButton: {
+    alignSelf: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    backgroundColor: '#B5483D',
+    borderRadius: 8,
+  },
+  learnMoreText: {
+    fontSize: 16,
+    color: '#FFFFFF',
+    fontWeight: '600',
   },
 }); 
