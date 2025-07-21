@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
-  Image,
   TouchableOpacity,
   StyleSheet,
   Alert,
@@ -28,6 +27,8 @@ import { theme } from "../styles/theme";
 import KeyboardAwareContainer from "../components/KeyboardAwareContainer";
 import CaptionInput from "../components/CaptionInput";
 import * as ImagePicker from "expo-image-picker";
+import notificationService from "../services/NotificationService";
+import OptimizedImage from "../components/OptimizedImage";
 
 const { width, height } = Dimensions.get('window');
 
@@ -274,7 +275,18 @@ export default function PostFitScreen({ navigation, route }) {
         lastUpdated: new Date(),
       };
 
-      await addDoc(collection(db, "fits"), fitData);
+      const fitDocRef = await addDoc(collection(db, "fits"), fitData);
+
+      // Send notifications to group members about new fit
+      try {
+        await notificationService.sendNewFitNotificationToAllGroups(
+          fitDocRef.id,
+          userName,
+          userGroups
+        );
+      } catch (error) {
+        console.error('Error sending new fit notifications:', error);
+      }
 
       Alert.alert("Success", "Your fit has been posted!", [
         {
@@ -379,7 +391,7 @@ export default function PostFitScreen({ navigation, route }) {
             >
               {image ? (
                 <>
-                  <Image source={{ uri: image }} style={styles.image} />
+                  <OptimizedImage source={{ uri: image }} style={styles.image} />
                   <View style={styles.imageOverlay}>
                     <View style={styles.imageActions}>
                       <TouchableOpacity

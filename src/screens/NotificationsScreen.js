@@ -5,7 +5,6 @@ import {
   FlatList,
   StyleSheet,
   TouchableOpacity,
-  Image,
   Animated,
   Dimensions,
   StatusBar,
@@ -13,6 +12,7 @@ import {
 import { collection, query, where, orderBy, onSnapshot, getDocs, doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
+import OptimizedImage from '../components/OptimizedImage';
 // import { Ionicons } from '@expo/vector-icons';
 
 const { width, height } = Dimensions.get('window');
@@ -209,9 +209,10 @@ export default function NotificationsScreen({ isVisible, onClose, onNavigateToFi
         <View style={styles.userInfo}>
           <View style={styles.avatar}>
             {item.userProfileImageURL ? (
-              <Image 
+              <OptimizedImage 
                 source={{ uri: item.userProfileImageURL }} 
                 style={styles.avatarImage}
+                showLoadingIndicator={false}
               />
             ) : (
               <Text style={styles.avatarText}>
@@ -228,10 +229,11 @@ export default function NotificationsScreen({ isVisible, onClose, onNavigateToFi
           </View>
         </View>
         <View style={styles.fitPreview}>
-          <Image 
+          <OptimizedImage 
             source={{ uri: item.fitImageUrl }} 
             style={styles.fitImage}
-            resizeMode="cover"
+            contentFit="cover"
+            showLoadingIndicator={false}
           />
         </View>
       </View>

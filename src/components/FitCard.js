@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
-  Image,
   TouchableOpacity,
   StyleSheet,
   Alert,
@@ -12,6 +11,8 @@ import { doc, updateDoc, getDoc } from "firebase/firestore";
 import { db } from "../config/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { theme } from "../styles/theme";
+import notificationService from "../services/NotificationService";
+import OptimizedImage from "./OptimizedImage";
 
 export default function FitCard({ fit, onCommentSectionOpen, onOpenCommentModal }) {
   const { user } = useAuth();
@@ -179,6 +180,13 @@ export default function FitCard({ fit, onCommentSectionOpen, onOpenCommentModal 
         lastUpdated: new Date(),
       });
 
+      // Send notification to fit owner
+      try {
+        await notificationService.sendRatingNotification(fit.id, fit.userId, rating);
+      } catch (error) {
+        console.error('Error sending rating notification:', error);
+      }
+
     } catch (error) {
       console.error("Error rating fit:", error);
       Alert.alert("Error", "Failed to rate fit. Please try again.");
@@ -335,10 +343,11 @@ export default function FitCard({ fit, onCommentSectionOpen, onOpenCommentModal 
       <View style={styles.header}>
         <View style={styles.userInfo}>
           {getUserProfileImage() ? (
-            <Image
+            <OptimizedImage
               source={{ uri: getUserProfileImage() }}
               style={styles.avatarImage}
-              defaultSource={require("../../assets/icon.png")}
+              placeholder={require("../../assets/icon.png")}
+              showLoadingIndicator={false}
             />
           ) : (
             <View style={styles.avatar}>
@@ -383,7 +392,19 @@ export default function FitCard({ fit, onCommentSectionOpen, onOpenCommentModal 
 
       {/* Main Image */}
       <View style={styles.imageContainer}>
-        <Image source={{ uri: fit.imageURL }} style={styles.image} />
+        {fit.imageURL ? (
+          <OptimizedImage 
+            source={{ uri: fit.imageURL }} 
+            style={styles.image}
+            priority="high"
+            cachePolicy="memory-disk"
+            transition={200}
+          />
+        ) : (
+          <View style={[styles.image, styles.placeholderImage]}>
+            <Ionicons name="camera-outline" size={48} color="#666" />
+          </View>
+        )}
       </View>
 
       {/* Rate The Fit Section */}
@@ -538,6 +559,11 @@ const styles = StyleSheet.create({
     width: '100%',
     aspectRatio: 3 / 3,
     borderRadius: 8,
+  },
+  placeholderImage: {
+    backgroundColor: '#2A2A2A',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 
   // Rate section

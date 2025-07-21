@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
-  Image,
   StyleSheet,
   TouchableOpacity,
   StatusBar,
@@ -19,6 +18,7 @@ import { db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import Comment from '../components/Comment';
 import CommentInput from '../components/CommentInput';
+import OptimizedImage from '../components/OptimizedImage';
 
 const { width, height } = Dimensions.get('window');
 
@@ -178,10 +178,13 @@ export default function FitDetailsScreen({ navigation, route }) {
             {/* Image Section */}
             <View style={styles.imageSection}>
               {fit.imageURL ? (
-                <Image
+                <OptimizedImage
                   source={{ uri: fit.imageURL }}
                   style={styles.fitImage}
-                  resizeMode="cover"
+                  contentFit="cover"
+                  priority="high"
+                  cachePolicy="memory-disk"
+                  transition={300}
                 />
               ) : (
                 <View style={styles.placeholderImage}>
@@ -195,10 +198,11 @@ export default function FitDetailsScreen({ navigation, route }) {
               <View style={styles.userInfo}>
                 <View style={styles.profileContainer}>
                   {fit.userProfileImageURL ? (
-                    <Image
+                    <OptimizedImage
                       source={{ uri: fit.userProfileImageURL }}
                       style={styles.profileImage}
-                      resizeMode="cover"
+                      contentFit="cover"
+                      showLoadingIndicator={false}
                     />
                   ) : (
                     <View style={styles.placeholderProfile}>

@@ -10,7 +10,6 @@ import {
   SafeAreaView,
   Animated,
   Dimensions,
-  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -19,6 +18,7 @@ import { doc, updateDoc } from 'firebase/firestore';
 import { storage, db, auth } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import KeyboardAwareContainer from '../components/KeyboardAwareContainer';
+import OptimizedImage from '../components/OptimizedImage';
 
 const { width, height } = Dimensions.get('window');
 
@@ -208,7 +208,7 @@ const ProfileSetupScreen = ({ navigation, route }) => {
             activeOpacity={0.8}
           >
             {profileImage ? (
-              <Image source={{ uri: profileImage }} style={styles.profileImage} />
+              <OptimizedImage source={{ uri: profileImage }} style={styles.profileImage} />
             ) : (
               <View style={styles.imagePlaceholder}>
                 <Text style={styles.placeholderText}>add photo</Text>

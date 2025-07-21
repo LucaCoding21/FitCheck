@@ -1,20 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, Alert, StatusBar, Modal, Animated, Dimensions, Image, Animated as RNAnimated, PanGestureHandler, State, ScrollView } from 'react-native';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, Alert, StatusBar, Modal, Animated, Dimensions, Animated as RNAnimated, PanGestureHandler, State, ScrollView } from 'react-native';
 import { collection, query, where, orderBy, onSnapshot, getDocs, doc, getDoc } from 'firebase/firestore';
 
 const AnimatedFlatList = RNAnimated.createAnimatedComponent(FlatList);
-import { signOut } from 'firebase/auth';
-import { db, auth } from '../config/firebase';
+import { db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import FitCard from '../components/FitCard';
 import CommentModal from '../components/CommentModal';
 import NotificationsScreen from './NotificationsScreen';
 import { theme } from '../styles/theme';
+import OptimizedImage from '../components/OptimizedImage';
 
 const { width, height } = Dimensions.get('window');
 
 export default function HomeScreen({ navigation, route }) {
-  const { user } = useAuth();
+  const { user, signOutUser } = useAuth();
   const [fits, setFits] = useState([]);
   const [userGroups, setUserGroups] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState('all'); // 'all', 'kappa', 'thegirls', or group ID
@@ -255,10 +255,11 @@ export default function HomeScreen({ navigation, route }) {
           style: 'destructive',
           onPress: async () => {
             try {
-              await signOut(auth);
-              navigation.replace('Onboarding');
+              await signOutUser();
+              // Navigation will be handled automatically by App.js when user becomes null
             } catch (error) {
-              Alert.alert('Error', error.message);
+              console.error('Error signing out:', error);
+              Alert.alert('Error', 'Failed to sign out. Please try again.');
             }
           },
         },
@@ -385,9 +386,10 @@ export default function HomeScreen({ navigation, route }) {
               onPress={handleNotificationPress}
               activeOpacity={0.8}
             >
-              <Image 
+              <OptimizedImage 
                 source={require('../../assets/noti.png')} 
                 style={styles.notificationIcon}
+                showLoadingIndicator={false}
               />
               {unreadNotificationsCount > 0 && (
                 <View style={styles.notificationDot} />
@@ -399,9 +401,10 @@ export default function HomeScreen({ navigation, route }) {
               activeOpacity={0.8}
             >
               {userProfileImageURL ? (
-                <Image 
+                <OptimizedImage 
                   source={{ uri: userProfileImageURL }} 
                   style={styles.profileImage}
+                  showLoadingIndicator={false}
                 />
               ) : (
                 <View style={styles.profilePlaceholder}>
@@ -463,9 +466,10 @@ export default function HomeScreen({ navigation, route }) {
         ) : fits.length === 0 ? (
           <View style={styles.emptyState}>
             <View style={styles.emptyIcon}>
-              <Image 
+              <OptimizedImage 
                 source={require('../../assets/starman-whitelegs.png')} 
                 style={styles.emptyIconImage}
+                showLoadingIndicator={false}
               />
             </View>
             <Text style={styles.emptyTitle}>No Fits Today</Text>

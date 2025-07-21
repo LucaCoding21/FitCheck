@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   FlatList,
-  Image,
   StatusBar,
   Animated,
   TouchableOpacity,
@@ -14,10 +13,10 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { collection, query, where, orderBy, onSnapshot, getDoc, doc } from 'firebase/firestore';
-import { signOut } from 'firebase/auth';
-import { db, auth } from '../config/firebase';
+import { db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { theme } from '../styles/theme';
+import OptimizedImage from '../components/OptimizedImage';
 
 // Helper function to get user's fits
 export const getMyFits = async (userId) => {
@@ -94,7 +93,7 @@ const formatRating = (fit) => {
 };
 
 export default function ProfileScreen({ navigation }) {
-  const { user } = useAuth();
+  const { user, signOutUser } = useAuth();
   const [myFits, setMyFits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -227,10 +226,16 @@ export default function ProfileScreen({ navigation }) {
           style: 'destructive',
           onPress: async () => {
             try {
-              await signOut(auth);
-              // The AuthContext will handle the navigation to sign-in screen
+              // Clean up real-time listeners before signing out
+              if (unsubscribeRef.current) {
+                unsubscribeRef.current();
+              }
+              
+              await signOutUser();
+              // Navigation will be handled automatically by App.js when user becomes null
             } catch (error) {
               console.error('Error signing out:', error);
+              Alert.alert('Error', 'Failed to sign out. Please try again.');
             }
           },
         },
@@ -259,10 +264,12 @@ export default function ProfileScreen({ navigation }) {
           {/* Fit Image */}
           <View style={styles.imageContainer}>
             {item.imageURL ? (
-              <Image
+              <OptimizedImage
                 source={{ uri: item.imageURL }}
                 style={styles.fitImage}
-                resizeMode="cover"
+                contentFit="cover"
+                priority="normal"
+                cachePolicy="memory-disk"
               />
             ) : (
               <View style={styles.placeholderImage}>

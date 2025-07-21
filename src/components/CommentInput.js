@@ -8,12 +8,13 @@ import {
   Keyboard,
   Alert,
   Pressable,
-  Image,
 } from "react-native";
 import { doc, updateDoc, arrayUnion, getDoc } from "firebase/firestore";
 import { db } from "../config/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { theme } from "../styles/theme";
+import notificationService from "../services/NotificationService";
+import OptimizedImage from "./OptimizedImage";
 
 export default function CommentInput({ fitId, onCommentAdded, placeholder = "Add a comment..." }) {
   const { user } = useAuth();
@@ -71,6 +72,20 @@ export default function CommentInput({ fitId, onCommentAdded, placeholder = "Add
         lastUpdated: new Date(),
       });
 
+      // Send notification to fit owner
+      try {
+        const fitDoc = await getDoc(fitRef);
+        if (fitDoc.exists()) {
+          const fitData = fitDoc.data();
+          const fitOwnerId = fitData.userId;
+          const commenterName = userData.username || userData.displayName || userData.name || "User";
+          
+          await notificationService.sendCommentNotification(fitId, commenterName, fitOwnerId);
+        }
+      } catch (error) {
+        console.error('Error sending comment notification:', error);
+      }
+
       // Clear input and notify parent component
       setCommentText("");
       if (onCommentAdded) {
@@ -99,10 +114,11 @@ export default function CommentInput({ fitId, onCommentAdded, placeholder = "Add
       {/* User Avatar */}
       <View style={styles.userAvatar}>
         {userProfileImageURL ? (
-          <Image 
+          <OptimizedImage 
             source={{ uri: userProfileImageURL }} 
             style={styles.avatarImage}
-            defaultSource={require('../../assets/icon.png')}
+            placeholder={require('../../assets/icon.png')}
+            showLoadingIndicator={false}
           />
         ) : (
           <View style={styles.avatarPlaceholder}>

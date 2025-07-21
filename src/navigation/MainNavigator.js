@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, ActivityIndicator, StyleSheet, Text, TouchableOpacity, Image, Animated } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Text, TouchableOpacity, Animated, Image } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useFocusEffect } from '@react-navigation/native';
 import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
+import OptimizedImage from '../components/OptimizedImage';
 import HomeScreen from '../screens/HomeScreen';
 import PostFitScreen from '../screens/PostFitScreen';
 import GroupScreen from '../screens/GroupScreen';
@@ -14,6 +15,7 @@ import LeaderboardScreen from '../components/LeaderboardScreen';
 import NoGroupsScreen from '../screens/NoGroupsScreen';
 import FitDetailsScreen from '../screens/FitDetailsScreen';
 import ProfileSetupScreen from '../screens/ProfileSetupScreen';
+import GroupDetailsScreen from '../screens/GroupDetailsScreen';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -197,12 +199,13 @@ function CustomTabBar({ state, descriptors, navigation }) {
                   transform: [{ scale: scaleAnimations[route.key] || 1 }],
                 }}>
                   {userProfileImageURL ? (
-                    <Image
+                    <OptimizedImage
                       source={{ uri: userProfileImageURL }}
                       style={{
                         width: '100%',
                         height: '100%',
                       }}
+                      showLoadingIndicator={false}
                     />
                   ) : (
                     <View style={{
@@ -255,6 +258,7 @@ function CustomTabBar({ state, descriptors, navigation }) {
                     tintColor: '#FFFFFF',
                     opacity: isFocused ? 1 : 0.7,
                   }}
+                  resizeMode="contain"
                 />
               </Animated.View>
               <Text style={{
@@ -416,6 +420,7 @@ function MainNavigator({ route }) {
         <>
           <Stack.Screen name="NoGroups" component={NoGroupsScreen} />
           <Stack.Screen name="Groups" component={GroupScreen} />
+          <Stack.Screen name="GroupDetails" component={GroupDetailsScreen} />
           <Stack.Screen name="Profile" component={ProfileScreen} />
           <Stack.Screen name="FitDetails" component={FitDetailsScreen} />
         </>
@@ -427,6 +432,7 @@ function MainNavigator({ route }) {
             component={MainTabs}
             initialParams={{ selectedGroup }}
           />
+          <Stack.Screen name="GroupDetails" component={GroupDetailsScreen} />
           <Stack.Screen name="FitDetails" component={FitDetailsScreen} />
         </>
       )}

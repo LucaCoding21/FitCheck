@@ -4,7 +4,6 @@ import {
   Text,
   FlatList,
   StyleSheet,
-  Image,
   TouchableOpacity,
   StatusBar,
   Animated,
@@ -15,6 +14,7 @@ import { collection, query, where, orderBy, getDocs, getDoc, doc } from 'firebas
 import { db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { theme } from '../styles/theme';
+import OptimizedImage from './OptimizedImage';
 
 // Helper function to calculate display rating with fallback
 const calculateDisplayRating = (fit) => {
@@ -356,10 +356,11 @@ export default function LeaderboardScreen({ navigation, route }) {
           {/* Profile Picture */}
           <View style={styles.profileContainer}>
             {item.userProfileImageURL ? (
-              <Image
+              <OptimizedImage
                 source={{ uri: item.userProfileImageURL }}
                 style={styles.profileImage}
-                resizeMode="cover"
+                contentFit="cover"
+                showLoadingIndicator={false}
               />
             ) : (
               <View style={styles.placeholderProfile}>
@@ -453,9 +454,10 @@ export default function LeaderboardScreen({ navigation, route }) {
         ]}
       >
         <View style={styles.emptyIcon}>
-          <Image 
+          <OptimizedImage 
             source={require('../../assets/starman-whitelegs.png')} 
             style={styles.emptyIconImage}
+            showLoadingIndicator={false}
           />
         </View>
         <Text style={styles.emptyTitle}>Ready to Compete?</Text>

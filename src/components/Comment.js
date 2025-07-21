@@ -1,5 +1,6 @@
 import React from "react";
-import { View, Text, Image, StyleSheet } from "react-native";
+import { View, Text, StyleSheet } from "react-native";
+import OptimizedImage from "./OptimizedImage";
 
 export default function Comment({ comment }) {
   const formatTimeAgo = (date) => {
@@ -32,10 +33,11 @@ export default function Comment({ comment }) {
     <View style={styles.container}>
       <View style={styles.avatar}>
         {comment.userProfileImageURL ? (
-          <Image 
+          <OptimizedImage 
             source={{ uri: comment.userProfileImageURL }} 
             style={styles.avatarImage}
-            defaultSource={require('../../assets/icon.png')}
+            placeholder={require('../../assets/icon.png')}
+            showLoadingIndicator={false}
           />
         ) : (
           <Text style={styles.avatarText}>

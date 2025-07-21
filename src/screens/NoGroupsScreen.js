@@ -3,13 +3,13 @@ import {
   View,
   Text,
   TouchableOpacity,
-  Image,
   StyleSheet,
   Dimensions,
   Animated,
   Alert,
 } from 'react-native';
 import { theme } from '../styles/theme';
+import OptimizedImage from '../components/OptimizedImage';
 
 const { width, height } = Dimensions.get('window');
 
@@ -95,10 +95,11 @@ const NoGroupsScreen = ({ navigation }) => {
             },
           ]}
         >
-          <Image
+          <OptimizedImage
             source={require('../../assets/starman.png')}
             style={styles.starLogo}
-            resizeMode="contain"
+            contentFit="contain"
+            showLoadingIndicator={false}
           />
         </Animated.View>
 
