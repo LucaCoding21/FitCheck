@@ -616,22 +616,35 @@ export default function LeaderboardScreen({ navigation, route }) {
             </View>
             
             <View style={styles.modalBody}>
-              <View style={styles.scoreCard}>
-                <Text style={styles.scoreTitle}>How You Rank</Text>
-                <Text style={styles.scoreText}>Your average stars + bonus for active groups</Text>
-                <Text style={styles.scoreNote}>Max 5.0 stars possible</Text>
+              <View style={styles.infoSection}>
+                <Text style={styles.infoTitle}>How It Works</Text>
+                <Text style={styles.infoText}>
+                  Post your daily fit and get rated by group members. Higher average rating = better position on the leaderboard.
+                </Text>
               </View>
 
-              <View style={styles.ruleCard}>
-                <Text style={styles.ruleTitle}>Rating Requirements</Text>
-                <Text style={styles.ruleText}>Small groups (1-3): 1 rating</Text>
-                <Text style={styles.ruleText}>Medium groups (4-6): 2 ratings</Text>
-                <Text style={styles.ruleText}>Large groups (7+): 3-4 ratings</Text>
+              <View style={styles.requirementsCard}>
+                <Text style={styles.requirementsTitle}>To Appear on Leaderboard</Text>
+                <Text style={styles.requirementsSubtext}>Get rated by friends in your group</Text>
+                <View style={styles.requirementRow}>
+                  <Text style={styles.requirementLabel}>Small groups (1-3 people):</Text>
+                  <Text style={styles.requirementValue}>1 rating</Text>
+                </View>
+                <View style={styles.requirementRow}>
+                  <Text style={styles.requirementLabel}>Medium groups (4-6 people):</Text>
+                  <Text style={styles.requirementValue}>2 ratings</Text>
+                </View>
+                <View style={styles.requirementRow}>
+                  <Text style={styles.requirementLabel}>Large groups (7+ people):</Text>
+                  <Text style={styles.requirementValue}>3-4 ratings</Text>
+                </View>
               </View>
 
-              <Text style={styles.modalSubtext}>
-                Fair for all group sizes, resets daily
-              </Text>
+              <View style={styles.tipCard}>
+                <Text style={styles.tipText}>
+                  <Text style={styles.tipBold}>Tip:</Text> Rate your friends' fits to get rated back!
+                </Text>
+              </View>
             </View>
           </View>
         </TouchableOpacity>
@@ -939,58 +952,70 @@ const styles = StyleSheet.create({
   modalBody: {
     padding: 24,
   },
-  scoreCard: {
-    backgroundColor: '#333333',
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 16,
+  infoSection: {
+    marginBottom: 20,
   },
-  scoreTitle: {
+  infoTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#FFFFFF',
-    marginBottom: 12,
-    textAlign: 'center',
+    marginBottom: 8,
   },
-  scoreText: {
+  infoText: {
     fontSize: 15,
     color: '#CCCCCC',
-    textAlign: 'center',
-    marginBottom: 8,
-    lineHeight: 20,
+    lineHeight: 22,
   },
-  scoreNote: {
-    fontSize: 12,
-    color: '#999999',
-    textAlign: 'center',
-    fontStyle: 'italic',
-  },
-  ruleCard: {
+  requirementsCard: {
     backgroundColor: '#333333',
     borderRadius: 12,
     padding: 20,
     marginBottom: 20,
   },
-  ruleTitle: {
+  requirementsTitle: {
     fontSize: 16,
     fontWeight: 'bold',
     color: '#FFFFFF',
-    marginBottom: 12,
+    marginBottom: 8,
+    textAlign: 'center',
   },
-  ruleText: {
+  requirementsSubtext: {
     fontSize: 14,
     color: '#CCCCCC',
-    marginBottom: 8,
-    lineHeight: 18,
-  },
-  modalSubtext: {
-    fontSize: 14,
-    color: '#999999',
     textAlign: 'center',
-    marginTop: 10,
-    marginBottom: 10,
-    fontStyle: 'italic',
+    marginBottom: 16,
+  },
+  requirementRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  requirementLabel: {
+    fontSize: 14,
+    color: '#CCCCCC',
+    flex: 1,
+  },
+  requirementValue: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#CD9F3E',
+  },
+  tipCard: {
+    backgroundColor: '#2A4A2A',
+    borderRadius: 12,
+    padding: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: '#4CAF50',
+  },
+  tipText: {
+    fontSize: 14,
+    color: '#CCCCCC',
     lineHeight: 20,
+  },
+  tipBold: {
+    fontWeight: 'bold',
+    color: '#FFFFFF',
   },
   learnMoreButton: {
     alignSelf: 'center',

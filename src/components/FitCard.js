@@ -483,12 +483,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 10,
+    aspectRatio: 1,
+    overflow: 'hidden',
   },
   avatarImage: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    marginRight: 5,
+    marginRight: 10,
+    aspectRatio: 1,
+    overflow: 'hidden',
   },
   avatarText: {
     fontSize: 16,

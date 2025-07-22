@@ -5,7 +5,6 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   StatusBar,
   SafeAreaView,
   Animated,
@@ -15,14 +14,73 @@ import { Ionicons } from '@expo/vector-icons';
 import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../config/firebase';
 import KeyboardAwareContainer from '../components/KeyboardAwareContainer';
+import Toast, { BaseToast, ErrorToast } from 'react-native-toast-message';
 
 const { width, height } = Dimensions.get('window');
+
+// Custom Toast config
+const toastConfig = {
+  success: (props) => (
+    <BaseToast
+      {...props}
+      style={{
+        backgroundColor: '#2a2a2a',
+        borderLeftColor: 'transparent',
+        borderRadius: 12,
+        minHeight: 48,
+        alignItems: 'center',
+        shadowOpacity: 0,
+        marginHorizontal: 16,
+      }}
+      contentContainerStyle={{ paddingHorizontal: 12 }}
+      text1Style={{
+        color: '#FFFFFF',
+        fontSize: 16,
+        fontWeight: '700',
+        letterSpacing: 0.5,
+      }}
+      text2Style={{ color: '#71717A' }}
+      renderLeadingIcon={() => (
+        <Ionicons name="checkmark-circle" size={22} color="#B5483D" style={{ marginRight: 8 }} />
+      )}
+    />
+  ),
+  error: (props) => (
+    <ErrorToast
+      {...props}
+      style={{
+        backgroundColor: '#2a2a2a',
+        borderLeftColor: 'transparent',
+        borderRadius: 12,
+        minHeight: 48,
+        alignItems: 'center',
+        shadowOpacity: 0,
+        marginHorizontal: 16,
+      }}
+      contentContainerStyle={{ paddingHorizontal: 12 }}
+      text1Style={{
+        color: '#FFFFFF',
+        fontSize: 16,
+        fontWeight: '700',
+        letterSpacing: 0.5,
+      }}
+      text2Style={{ color: '#71717A' }}
+      renderLeadingIcon={() => (
+        <Ionicons name="close-circle" size={22} color="#FF6B6B" style={{ marginRight: 8 }} />
+      )}
+    />
+  ),
+};
 
 const SignInScreen = ({ navigation }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [focusedInput, setFocusedInput] = useState(null);
+  const [emailError, setEmailError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [shakeAnim] = useState(new Animated.Value(0));
+  const [showPassword, setShowPassword] = useState(false);
 
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -55,8 +113,39 @@ const SignInScreen = ({ navigation }) => {
     ]).start();
   }, []);
 
+  const clearErrors = () => {
+    setEmailError('');
+    setPasswordError('');
+  };
+
+  const shakeAnimation = () => {
+    Animated.sequence([
+      Animated.timing(shakeAnim, {
+        toValue: 10,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(shakeAnim, {
+        toValue: -10,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(shakeAnim, {
+        toValue: 10,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(shakeAnim, {
+        toValue: 0,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
   const handleInputFocus = (inputName) => {
     setFocusedInput(inputName);
+    clearErrors();
   };
 
   const handleInputBlur = () => {
@@ -74,54 +163,127 @@ const SignInScreen = ({ navigation }) => {
     }
   };
 
+  const togglePasswordVisibility = () => {
+    setShowPassword(!showPassword);
+  };
+
+  const validateInputs = () => {
+    let isValid = true;
+    clearErrors();
+
+    if (!email.trim()) {
+      setEmailError('Email is required');
+      isValid = false;
+    } else if (!/\S+@\S+\.\S+/.test(email)) {
+      setEmailError('Please enter a valid email');
+      isValid = false;
+    }
+
+    if (!password) {
+      setPasswordError('Password is required');
+      isValid = false;
+    }
+
+    return isValid;
+  };
+
   const handleSignIn = async () => {
-    if (!email || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
+    if (!validateInputs()) {
+      shakeAnimation();
       return;
     }
 
     setLoading(true);
+    clearErrors();
     
     try {
       await signInWithEmailAndPassword(auth, email, password);
       // Navigation will happen automatically when AuthContext updates
     } catch (error) {
-      let errorMessage = 'An error occurred during sign in';
+      let errorMessage = 'Error signing in';
+      let fieldError = '';
+      
       if (error.code === 'auth/user-not-found') {
         errorMessage = 'No account found with this email address';
+        fieldError = 'No account found with this email';
+        setEmailError(fieldError);
       } else if (error.code === 'auth/wrong-password') {
         errorMessage = 'Incorrect password';
+        fieldError = 'Incorrect password';
+        setPasswordError(fieldError);
       } else if (error.code === 'auth/invalid-email') {
         errorMessage = 'Please enter a valid email address';
+        fieldError = 'Please enter a valid email';
+        setEmailError(fieldError);
       } else if (error.code === 'auth/too-many-requests') {
         errorMessage = 'Too many failed attempts. Please try again later';
+        Toast.show({
+          type: 'error',
+          text1: errorMessage,
+          position: 'bottom',
+          visibilityTime: 4000,
+          autoHide: true,
+          bottomOffset: 60,
+        });
+      } else {
+        Toast.show({
+          type: 'error',
+          text1: errorMessage,
+          position: 'bottom',
+          visibilityTime: 3000,
+          autoHide: true,
+          bottomOffset: 60,
+        });
       }
-      Alert.alert('Error', errorMessage);
+      
+      shakeAnimation();
     }
     setLoading(false);
   };
 
   const handleForgotPassword = async () => {
-    if (!email) {
-      Alert.alert('Error', 'Please enter your email address first');
+    if (!email.trim()) {
+      setEmailError('Please enter your email address first');
+      shakeAnimation();
+      return;
+    }
+
+    if (!/\S+@\S+\.\S+/.test(email)) {
+      setEmailError('Please enter a valid email address');
+      shakeAnimation();
       return;
     }
 
     try {
       await sendPasswordResetEmail(auth, email);
-      Alert.alert(
-        'Password Reset Email Sent',
-        'Check your email for instructions to reset your password.',
-        [{ text: 'OK' }]
-      );
+      Toast.show({
+        type: 'success',
+        text1: 'Password reset email sent',
+        text2: 'Check your email for instructions',
+        position: 'bottom',
+        visibilityTime: 4000,
+        autoHide: true,
+        bottomOffset: 60,
+      });
     } catch (error) {
       let errorMessage = 'Failed to send password reset email';
       if (error.code === 'auth/user-not-found') {
         errorMessage = 'No account found with this email address';
+        setEmailError('No account found with this email');
       } else if (error.code === 'auth/invalid-email') {
         errorMessage = 'Please enter a valid email address';
+        setEmailError('Please enter a valid email');
       }
-      Alert.alert('Error', errorMessage);
+      
+      Toast.show({
+        type: 'error',
+        text1: errorMessage,
+        position: 'bottom',
+        visibilityTime: 3000,
+        autoHide: true,
+        bottomOffset: 60,
+      });
+      shakeAnimation();
     }
   };
 
@@ -134,144 +296,195 @@ const SignInScreen = ({ navigation }) => {
   };
 
   return (
-    <KeyboardAwareContainer>
-      <StatusBar barStyle="light-content" backgroundColor="#1a1a1a" />
-      <View style={styles.container}>
-        {/* Header Section */}
-        <Animated.View
-          style={[
-            styles.headerSection,
-            {
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }],
-            },
-          ]}
-        >
-          <TouchableOpacity
-            style={styles.closeButton}
-            onPress={handleClose}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="close" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
-          
-          <Text style={styles.headerText}>Log in to your account</Text>
-        </Animated.View>
-
-        {/* Main Content Section */}
-        <Animated.View
-          style={[
-            styles.contentSection,
-            {
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }],
-            },
-          ]}
-        >
-          <Animated.Text
+    <>
+      <KeyboardAwareContainer>
+        <StatusBar barStyle="light-content" backgroundColor="#1a1a1a" />
+        <View style={styles.container}>
+          {/* Header Section */}
+          <Animated.View
             style={[
-              styles.title,
+              styles.headerSection,
               {
-                transform: [{ scale: titleScale }],
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }],
               },
             ]}
           >
-            Sign In
-          </Animated.Text>
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={handleClose}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="close" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+            
+            <Text style={styles.headerText}>Log in to your account</Text>
+          </Animated.View>
 
-          {/* Email Input */}
-          <View style={[
-            styles.inputContainer,
-            focusedInput === 'email' && styles.inputContainerFocused
-          ]}>
-            <Ionicons
-              name="mail-outline"
-              size={20}
-              color={focusedInput === 'email' ? '#B5483D' : '#71717A'}
-              style={styles.inputIcon}
-            />
-            <TextInput
-              ref={emailInputRef}
-              style={styles.input}
-              placeholder="Email"
-              placeholderTextColor="#71717A"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              returnKeyType="next"
-              onFocus={() => handleInputFocus('email')}
-              onBlur={handleInputBlur}
-              onSubmitEditing={() => handleNextInput('email')}
-            />
-          </View>
-
-          {/* Password Input */}
-          <View style={[
-            styles.inputContainer,
-            focusedInput === 'password' && styles.inputContainerFocused
-          ]}>
-            <Ionicons
-              name="lock-closed-outline"
-              size={20}
-              color={focusedInput === 'password' ? '#B5483D' : '#71717A'}
-              style={styles.inputIcon}
-            />
-            <TextInput
-              ref={passwordInputRef}
-              style={styles.input}
-              placeholder="Password"
-              placeholderTextColor="#71717A"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              returnKeyType="done"
-              onFocus={() => handleInputFocus('password')}
-              onBlur={handleInputBlur}
-              onSubmitEditing={() => handleNextInput('password')}
-            />
-          </View>
-
-          {/* Continue Button */}
-          <TouchableOpacity
-            style={styles.continueButton}
-            onPress={handleSignIn}
-            disabled={loading}
-            activeOpacity={0.8}
+          {/* Main Content Section */}
+          <Animated.View
+            style={[
+              styles.contentSection,
+              {
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }],
+              },
+            ]}
           >
-            <Text style={styles.continueButtonText}>
-              {loading ? 'Signing In...' : 'Continue'}
-            </Text>
-          </TouchableOpacity>
-        </Animated.View>
+            <Animated.Text
+              style={[
+                styles.title,
+                {
+                  transform: [{ scale: titleScale }],
+                },
+              ]}
+            >
+              Sign In
+            </Animated.Text>
 
-        {/* Footer Section */}
-        <Animated.View
-          style={[
-            styles.footerSection,
-            {
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }],
-            },
-          ]}
-        >
-          <Text style={styles.footerText}>
-            Don't have an account?{' '}
-            <Text style={styles.signUpLink} onPress={handleSignUp}>
-              Sign Up
-            </Text>
-          </Text>
-          
-          <TouchableOpacity
-            style={styles.forgotPasswordButton}
-            onPress={handleForgotPassword}
-            activeOpacity={0.7}
+            {/* Email Input */}
+            <View style={styles.inputWrapper}>
+              <View style={[
+                styles.inputContainer,
+                focusedInput === 'email' && styles.inputContainerFocused,
+                emailError && styles.inputContainerError
+              ]}>
+                <Ionicons
+                  name="mail-outline"
+                  size={20}
+                  color={emailError ? '#FF6B6B' : focusedInput === 'email' ? '#B5483D' : '#71717A'}
+                  style={styles.inputIcon}
+                />
+                <TextInput
+                  ref={emailInputRef}
+                  style={styles.input}
+                  placeholder="Email"
+                  placeholderTextColor="#71717A"
+                  value={email}
+                  onChangeText={(text) => {
+                    setEmail(text);
+                    if (emailError) setEmailError('');
+                  }}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  returnKeyType="next"
+                  onFocus={() => handleInputFocus('email')}
+                  onBlur={handleInputBlur}
+                  onSubmitEditing={() => handleNextInput('email')}
+                />
+              </View>
+              {emailError && (
+                <Animated.View 
+                  style={[
+                    styles.errorContainer,
+                    { transform: [{ translateX: shakeAnim }] }
+                  ]}
+                >
+                  <Ionicons name="alert-circle" size={14} color="#FF6B6B" />
+                  <Text style={styles.errorText}>{emailError}</Text>
+                </Animated.View>
+              )}
+            </View>
+
+            {/* Password Input */}
+            <View style={styles.inputWrapper}>
+              <View style={[
+                styles.inputContainer,
+                focusedInput === 'password' && styles.inputContainerFocused,
+                passwordError && styles.inputContainerError
+              ]}>
+                <Ionicons
+                  name="lock-closed-outline"
+                  size={20}
+                  color={passwordError ? '#FF6B6B' : focusedInput === 'password' ? '#B5483D' : '#71717A'}
+                  style={styles.inputIcon}
+                />
+                <TextInput
+                  ref={passwordInputRef}
+                  style={styles.input}
+                  placeholder="Password"
+                  placeholderTextColor="#71717A"
+                  value={password}
+                  onChangeText={(text) => {
+                    setPassword(text);
+                    if (passwordError) setPasswordError('');
+                  }}
+                  secureTextEntry={!showPassword}
+                  returnKeyType="done"
+                  onFocus={() => handleInputFocus('password')}
+                  onBlur={handleInputBlur}
+                  onSubmitEditing={() => handleNextInput('password')}
+                />
+                <TouchableOpacity
+                  style={styles.eyeButton}
+                  onPress={togglePasswordVisibility}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons
+                    name={showPassword ? "eye-off" : "eye"}
+                    size={20}
+                    color={passwordError ? '#FF6B6B' : focusedInput === 'password' ? '#B5483D' : '#71717A'}
+                  />
+                </TouchableOpacity>
+              </View>
+              {passwordError && (
+                <Animated.View 
+                  style={[
+                    styles.errorContainer,
+                    { transform: [{ translateX: shakeAnim }] }
+                  ]}
+                >
+                  <Ionicons name="alert-circle" size={14} color="#FF6B6B" />
+                  <Text style={styles.errorText}>{passwordError}</Text>
+                </Animated.View>
+              )}
+            </View>
+
+            {/* Continue Button */}
+            <TouchableOpacity
+              style={[
+                styles.continueButton,
+                (emailError || passwordError) && styles.continueButtonError
+              ]}
+              onPress={handleSignIn}
+              disabled={loading}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.continueButtonText}>
+                {loading ? 'Signing In...' : 'Continue'}
+              </Text>
+            </TouchableOpacity>
+          </Animated.View>
+
+          {/* Footer Section */}
+          <Animated.View
+            style={[
+              styles.footerSection,
+              {
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }],
+              },
+            ]}
           >
-            <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-          </TouchableOpacity>
-        </Animated.View>
-      </View>
-    </KeyboardAwareContainer>
+            <Text style={styles.footerText}>
+              Don't have an account?{' '}
+              <Text style={styles.signUpLink} onPress={handleSignUp}>
+                Sign Up
+              </Text>
+            </Text>
+            
+            <TouchableOpacity
+              style={styles.forgotPasswordButton}
+              onPress={handleForgotPassword}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+            </TouchableOpacity>
+          </Animated.View>
+        </View>
+      </KeyboardAwareContainer>
+      <Toast config={toastConfig} />
+    </>
   );
 };
 
@@ -318,6 +531,10 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginBottom: 20,
   },
+  inputWrapper: {
+    width: '100%',
+    marginBottom: 8,
+  },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -342,6 +559,14 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
+  inputContainerError: {
+    borderColor: '#FF6B6B',
+    shadowColor: '#FF6B6B',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
   inputIcon: {
     marginRight: 12,
   },
@@ -350,6 +575,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#FFFFFF',
     backgroundColor: 'transparent',
+  },
+  eyeButton: {
+    padding: 8,
+  },
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    marginLeft: 4,
+  },
+  errorText: {
+    color: '#FF6B6B',
+    fontSize: 14,
+    fontWeight: '500',
+    marginLeft: 6,
   },
   continueButton: {
     backgroundColor: '#B5483D',
@@ -365,6 +605,10 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
     width: '100%',
+  },
+  continueButtonError: {
+    backgroundColor: '#FF6B6B',
+    shadowColor: '#FF6B6B',
   },
   continueButtonText: {
     color: '#FFFFFF',

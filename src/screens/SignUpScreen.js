@@ -27,6 +27,8 @@ const SignUpScreen = ({ navigation }) => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [focusedInput, setFocusedInput] = useState(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -80,6 +82,14 @@ const SignUpScreen = ({ navigation }) => {
         handleSignUp();
         break;
     }
+  };
+
+  const togglePasswordVisibility = () => {
+    setShowPassword(!showPassword);
+  };
+
+  const toggleConfirmPasswordVisibility = () => {
+    setShowConfirmPassword(!showConfirmPassword);
   };
 
   const handleSignUp = async () => {
@@ -218,12 +228,23 @@ const SignUpScreen = ({ navigation }) => {
               placeholderTextColor="#71717A"
               value={password}
               onChangeText={setPassword}
-              secureTextEntry
+              secureTextEntry={!showPassword}
               returnKeyType="next"
               onFocus={() => handleInputFocus('password')}
               onBlur={handleInputBlur}
               onSubmitEditing={() => handleNextInput('password')}
             />
+            <TouchableOpacity
+              style={styles.eyeButton}
+              onPress={togglePasswordVisibility}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={showPassword ? "eye-off" : "eye"}
+                size={20}
+                color={focusedInput === 'password' ? '#B5483D' : '#71717A'}
+              />
+            </TouchableOpacity>
           </View>
 
           {/* Confirm Password Input */}
@@ -244,12 +265,23 @@ const SignUpScreen = ({ navigation }) => {
               placeholderTextColor="#71717A"
               value={confirmPassword}
               onChangeText={setConfirmPassword}
-              secureTextEntry
+              secureTextEntry={!showConfirmPassword}
               returnKeyType="done"
               onFocus={() => handleInputFocus('confirmPassword')}
               onBlur={handleInputBlur}
               onSubmitEditing={() => handleNextInput('confirmPassword')}
             />
+            <TouchableOpacity
+              style={styles.eyeButton}
+              onPress={toggleConfirmPasswordVisibility}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={showConfirmPassword ? "eye-off" : "eye"}
+                size={20}
+                color={focusedInput === 'confirmPassword' ? '#B5483D' : '#71717A'}
+              />
+            </TouchableOpacity>
           </View>
 
           {/* Continue Button */}
@@ -354,6 +386,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#FFFFFF',
     backgroundColor: 'transparent',
+    paddingRight: 8,
+  },
+  eyeButton: {
+    padding: 4,
+    marginLeft: 8,
   },
   continueButton: {
     backgroundColor: '#B5483D',

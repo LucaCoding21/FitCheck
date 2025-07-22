@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -8,34 +9,110 @@ import {
   SafeAreaView,
   Animated,
   Alert,
+  ScrollView,
+  Modal,
+  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { doc, updateDoc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, updateDoc, arrayRemove } from 'firebase/firestore';
 import { storage, db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import OptimizedImage from '../components/OptimizedImage';
 import { theme } from '../styles/theme';
+import * as Clipboard from 'expo-clipboard';
+import Toast, { BaseToast, ErrorToast } from 'react-native-toast-message';
+
+// Custom Toast config
+const toastConfig = {
+  success: (props) => (
+    <BaseToast
+      {...props}
+      style={{
+        backgroundColor: theme.colors.surface,
+        borderLeftColor: 'transparent', // Ensure no left accent
+        borderRadius: theme.borderRadius.md,
+        minHeight: 48,
+        alignItems: 'center',
+        shadowOpacity: 0,
+        marginHorizontal: 16,
+      }}
+      contentContainerStyle={{ paddingHorizontal: 12 }}
+      text1Style={{
+        color: theme.colors.text,
+        fontSize: 16,
+        fontWeight: '700',
+        letterSpacing: 0.5,
+      }}
+      text2Style={{ color: theme.colors.textSecondary }}
+      renderLeadingIcon={() => (
+        <Ionicons name="checkmark-circle" size={22} color={theme.colors.primary} style={{ marginRight: 8 }} />
+      )}
+    />
+  ),
+  error: (props) => (
+    <ErrorToast
+      {...props}
+      style={{
+        backgroundColor: theme.colors.surface,
+        borderLeftColor: 'transparent', // Ensure no left accent
+        borderRadius: theme.borderRadius.md,
+        minHeight: 48,
+        alignItems: 'center',
+        shadowOpacity: 0,
+        marginHorizontal: 16,
+      }}
+      contentContainerStyle={{ paddingHorizontal: 12 }}
+      text1Style={{
+        color: theme.colors.text,
+        fontSize: 16,
+        fontWeight: '700',
+        letterSpacing: 0.5,
+      }}
+      text2Style={{ color: theme.colors.textSecondary }}
+      renderLeadingIcon={() => (
+        <Ionicons name="close-circle" size={22} color={theme.colors.error} style={{ marginRight: 8 }} />
+      )}
+    />
+  ),
+};
 
 export default function GroupDetailsScreen({ navigation, route }) {
   const { user } = useAuth();
+  if (!user) {
+    // Option 1: Show a loading spinner or fallback UI
+    // return <LoadingScreen />;
+    // Option 2: Redirect to sign-in screen
+    navigation.replace('SignInScreen');
+    return null;
+  }
   const { groupId, groupName } = route.params;
   
   const [groupImage, setGroupImage] = useState(null);
   const [loading, setLoading] = useState(false);
   const [userData, setUserData] = useState(null);
   const [groupData, setGroupData] = useState(null);
+  const [hasPostedToday, setHasPostedToday] = useState(false);
+  const [groupMembers, setGroupMembers] = useState([]);
+  const [menuVisible, setMenuVisible] = useState(false);
+  
+  // Edit mode state
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editingGroupName, setEditingGroupName] = useState(groupName);
+  const [editingGroupImage, setEditingGroupImage] = useState(null);
   
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
   const imageScale = useRef(new Animated.Value(0.8)).current;
+  const menuScale = useRef(new Animated.Value(0.8)).current;
+  const menuOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     fetchUserData();
     fetchGroupData();
-    
+    checkIfPostedToday();
     // Entrance animations
     Animated.parallel([
       Animated.timing(fadeAnim, {
@@ -56,6 +133,23 @@ export default function GroupDetailsScreen({ navigation, route }) {
       }),
     ]).start();
   }, []);
+
+  // Fetch group members only after groupData is loaded
+  useEffect(() => {
+    if (groupData && groupData.members && groupData.members.length > 0) {
+      fetchGroupMembers();
+    }
+  }, [groupData]);
+
+  // Refresh data when screen comes into focus (e.g., after posting a fit)
+  useFocusEffect(
+    React.useCallback(() => {
+      if (groupData && groupData.members && groupData.members.length > 0) {
+        fetchGroupMembers();
+        checkIfPostedToday();
+      }
+    }, [groupData])
+  );
 
   const fetchUserData = async () => {
     try {
@@ -84,6 +178,83 @@ export default function GroupDetailsScreen({ navigation, route }) {
     }
   };
 
+  // Check if the current user posted today in this group
+  const checkIfPostedToday = async () => {
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const fitsQuery = query(
+        collection(db, 'fits'),
+        where('groupIds', 'array-contains', groupId),
+        where('userId', '==', user.uid)
+      );
+      const snapshot = await getDocs(fitsQuery);
+      const fits = snapshot.docs.map(doc => doc.data());
+      const postedToday = fits.some(fit => {
+        const fitDate = fit.createdAt?.toDate ? fit.createdAt.toDate() : new Date(fit.createdAt);
+        return fitDate >= today && fitDate < tomorrow;
+      });
+      setHasPostedToday(postedToday);
+    } catch (error) {
+      setHasPostedToday(false);
+    }
+  };
+
+  // Fetch all group members' user data and their posted status
+  const fetchGroupMembers = async () => {
+    try {
+      if (!groupData || !groupData.members || groupData.members.length === 0) {
+        setGroupMembers([]);
+        return;
+      }
+      
+      // Get today's date range for checking posted status
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      
+      // Firestore 'getDoc' for each memberId (document ID is UID)
+      const memberIds = groupData.members;
+      const memberPromises = memberIds.map(async (uid) => {
+        const userDoc = await getDoc(doc(db, 'users', uid));
+        if (userDoc.exists()) {
+          const userData = { uid: userDoc.id, ...userDoc.data() };
+          
+          // Check if this member posted today by querying fits collection
+          const fitsQuery = query(
+            collection(db, 'fits'),
+            where('groupIds', 'array-contains', groupId),
+            where('userId', '==', uid)
+          );
+          const fitsSnapshot = await getDocs(fitsQuery);
+          const fits = fitsSnapshot.docs.map(doc => doc.data());
+          const postedToday = fits.some(fit => {
+            const fitDate = fit.createdAt?.toDate ? fit.createdAt.toDate() : new Date(fit.createdAt);
+            return fitDate >= today && fitDate < tomorrow;
+          });
+          
+          return { ...userData, postedToday };
+        }
+        return null;
+      });
+      
+      let members = (await Promise.all(memberPromises)).filter(Boolean);
+      // Sort: current user first, then by username
+      members.sort((a, b) => {
+        if (a.uid === user.uid) return -1;
+        if (b.uid === user.uid) return 1;
+        return (a.username || '').localeCompare(b.username || '');
+      });
+      setGroupMembers(members);
+    } catch (error) {
+      console.error('Error fetching group members:', error);
+      setGroupMembers([]);
+    }
+  };
+
   const pickImage = async () => {
     try {
       // Request permissions
@@ -102,7 +273,11 @@ export default function GroupDetailsScreen({ navigation, route }) {
       });
 
       if (!result.canceled && result.assets[0]) {
-        setGroupImage(result.assets[0].uri);
+        if (isEditMode) {
+          setEditingGroupImage(result.assets[0].uri);
+        } else {
+          setGroupImage(result.assets[0].uri);
+        }
       }
     } catch (error) {
       Alert.alert('Error', 'Failed to pick image. Please try again.');
@@ -160,149 +335,419 @@ export default function GroupDetailsScreen({ navigation, route }) {
     setLoading(false);
   };
 
+  const openMenu = () => {
+    setMenuVisible(true);
+    Animated.parallel([
+      Animated.timing(menuOpacity, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.spring(menuScale, {
+        toValue: 1,
+        tension: 100,
+        friction: 8,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
 
+  const closeMenu = () => {
+    Animated.parallel([
+      Animated.timing(menuOpacity, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+      Animated.timing(menuScale, {
+        toValue: 0.8,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setMenuVisible(false);
+    });
+  };
+
+  const handleEditGroup = () => {
+    closeMenu();
+    setIsEditMode(true);
+    setEditingGroupName(groupData?.name || groupName);
+    setEditingGroupImage(null); // Clear editing image to show placeholder
+  };
+
+  const handleSaveGroup = async () => {
+    if (!editingGroupName.trim()) {
+      Alert.alert('Error', 'Group name cannot be empty.');
+      return;
+    }
+
+    Alert.alert(
+      'Save Changes',
+      'Are you sure you want to save these changes?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Save',
+          onPress: async () => {
+            try {
+              setLoading(true);
+              
+              let newGroupImageURL = groupData?.groupImageURL || null;
+              
+              // Upload new image if selected
+              if (editingGroupImage) {
+                try {
+                  newGroupImageURL = await uploadImageToFirebase(editingGroupImage);
+                } catch (uploadError) {
+                  console.error('Image upload failed:', uploadError);
+                  Alert.alert(
+                    'Image Upload Failed', 
+                    'Your group will be updated without the new image.',
+                    [{ text: 'OK' }]
+                  );
+                }
+              }
+
+              // Update group document
+              await updateDoc(doc(db, 'groups', groupId), {
+                name: editingGroupName.trim(),
+                groupImageURL: newGroupImageURL,
+                updatedAt: new Date(),
+              });
+
+              // Update local state
+              setGroupData(prev => ({
+                ...prev,
+                name: editingGroupName.trim(),
+                groupImageURL: newGroupImageURL,
+              }));
+              setGroupImage(newGroupImageURL);
+              
+              // Exit edit mode
+              setIsEditMode(false);
+              setEditingGroupImage(null);
+              
+              Toast.show({
+                type: 'success',
+                text1: 'Group updated successfully',
+                position: 'bottom',
+                visibilityTime: 2000,
+                autoHide: true,
+                bottomOffset: 60,
+              });
+              
+            } catch (error) {
+              console.error('Error updating group:', error);
+              Alert.alert('Error', 'Failed to update group. Please try again.');
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleCancelEdit = () => {
+    Alert.alert(
+      'Cancel Editing',
+      'Are you sure you want to cancel? Your changes will be lost.',
+      [
+        {
+          text: 'Keep Editing',
+          style: 'cancel',
+        },
+        {
+          text: 'Cancel',
+          style: 'destructive',
+          onPress: () => {
+            setIsEditMode(false);
+            setEditingGroupName(groupData?.name || groupName);
+            setEditingGroupImage(null);
+          },
+        },
+      ]
+    );
+  };
+
+  const handleLeaveGroup = async () => {
+    closeMenu();
+    Alert.alert(
+      'Leave Group',
+      `Are you sure you want to leave "${groupName}"? You won't be able to see the group's fits anymore.`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Leave Group',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setLoading(true);
+              
+              // Remove user from group's members array
+              await updateDoc(doc(db, 'groups', groupId), {
+                members: arrayRemove(user.uid),
+                memberCount: groupData?.memberCount - 1,
+              });
+
+              // Remove group from user's groups array
+              const userDoc = await getDoc(doc(db, 'users', user.uid));
+              if (userDoc.exists()) {
+                const userData = userDoc.data();
+                const updatedGroups = userData.groups?.filter(g => g !== groupId) || [];
+                await updateDoc(doc(db, 'users', user.uid), {
+                  groups: updatedGroups,
+                });
+              }
+
+              // Navigate back to Groups screen
+              navigation.replace("MainTabs", { screen: "Groups" });
+              
+            } catch (error) {
+              console.error('Error leaving group:', error);
+              Alert.alert('Error', 'Failed to leave group. Please try again.');
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
-      
-      {/* Header */}
-      <Animated.View
-        style={[
-          styles.header,
-          {
-            opacity: fadeAnim,
-            transform: [{ translateY: slideAnim }],
-          },
-        ]}
-      >
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.navigate("MainTabs", { screen: "Groups" })}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="chevron-back" size={24} color={theme.colors.text} />
-        </TouchableOpacity>
-        
-        <Text style={styles.headerTitle}>{groupName}</Text>
-        
-        <TouchableOpacity
-          style={styles.menuButton}
-          onPress={() => Alert.alert('Menu', 'Menu options coming soon')}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="ellipsis-horizontal" size={20} color={theme.colors.text} />
-        </TouchableOpacity>
-      </Animated.View>
-
-      {/* Group Info */}
-      <Animated.View
-        style={[
-          styles.groupInfo,
-          {
-            opacity: fadeAnim,
-            transform: [{ translateY: slideAnim }],
-          },
-        ]}
-      >
-        <Text style={styles.memberCount}>{groupData?.memberCount || 1} member{groupData?.memberCount !== 1 ? 's' : ''}</Text>
-      </Animated.View>
-
-      {/* Group Profile Picture */}
-      <Animated.View
-        style={[
-          styles.imageSection,
-          {
-            opacity: fadeAnim,
-            transform: [{ scale: imageScale }],
-          },
-        ]}
-      >
-        <TouchableOpacity
-          style={styles.groupImageContainer}
-          onPress={groupImage ? null : pickImage}
-          activeOpacity={groupImage ? 1 : 0.8}
-        >
-          {groupImage ? (
-            <OptimizedImage source={{ uri: groupImage }} style={styles.groupImage} />
-          ) : (
-            <View style={styles.imagePlaceholder}>
-              <Text style={styles.placeholderText}>add photo</Text>
-            </View>
+    <>
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
+        <View style={styles.container}>
+          {menuVisible && (
+            <TouchableOpacity
+              style={styles.menuBackdrop}
+              activeOpacity={1}
+              onPress={closeMenu}
+            />
           )}
-          {!groupImage && (
-            <View style={styles.imageOverlay}>
-              <Ionicons name="camera" size={24} color="#FFFFFF" />
-            </View>
-          )}
-        </TouchableOpacity>
         
-        {/* Activity indicator */}
-        <View style={styles.activityContainer}>
-          <Text style={styles.activityIcon}>🔥</Text>
-          <Text style={styles.activityText}>0</Text>
-        </View>
-      </Animated.View>
-
-      {/* Members List */}
-      <Animated.View
-        style={[
-          styles.membersSection,
-          {
-            opacity: fadeAnim,
-            transform: [{ translateY: slideAnim }],
-          },
-        ]}
-      >
-        <Text style={styles.membersTitle}>Members</Text>
-        
-        {/* Creator as first member */}
-        <View style={styles.memberItem}>
-          <View style={styles.memberAvatar}>
-            {userData?.profileImageURL ? (
-              <OptimizedImage
-                source={{ uri: userData.profileImageURL }}
-                style={styles.memberImage}
-                showLoadingIndicator={false}
-              />
+        {/* Header */}
+        <Animated.View
+          style={[
+            styles.header,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }],
+            },
+          ]}
+        >
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={isEditMode ? handleCancelEdit : () => navigation.navigate("MainTabs", { screen: "Groups" })}
+            activeOpacity={0.7}
+          >
+            <Ionicons name={isEditMode ? "close" : "chevron-back"} size={24} color={theme.colors.text} />
+          </TouchableOpacity>
+          <View style={styles.headerTitleContainer}>
+            {isEditMode ? (
+              <View style={styles.editableTitleContainer}>
+                <TextInput
+                  style={styles.editableTitle}
+                  value={editingGroupName}
+                  onChangeText={setEditingGroupName}
+                  placeholder="Enter group name"
+                  placeholderTextColor={theme.colors.textMuted}
+                  maxLength={30}
+                />
+                <TouchableOpacity
+                  style={styles.clearButton}
+                  onPress={() => setEditingGroupName('')}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="close-circle" size={28} color={theme.colors.textMuted} />
+                </TouchableOpacity>
+              </View>
             ) : (
-              <Text style={styles.memberAvatarText}>
-                {userData?.username?.charAt(0).toUpperCase() || 'U'}
-              </Text>
+              <Text style={styles.headerTitle}>{groupData?.name || groupName}</Text>
+            )}
+            <View style={styles.streakContainer}>
+              <Ionicons name="flame" size={16} color={theme.colors.primary} style={styles.streakIcon} />
+              <Text style={styles.streakText}>Streak: {groupData?.streak || 0}</Text>
+            </View>
+          </View>
+          {isEditMode ? (
+            <TouchableOpacity
+              style={styles.saveButton}
+              onPress={handleSaveGroup}
+              disabled={loading}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.saveButtonText}>Save</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={styles.menuButton}
+              onPress={menuVisible ? closeMenu : openMenu}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="ellipsis-horizontal" size={20} color={theme.colors.text} />
+            </TouchableOpacity>
+          )}
+        </Animated.View>
+
+        {/* Group Info Section */}
+        <Animated.View
+          style={[
+            styles.groupInfoSection,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }],
+            },
+          ]}
+        >
+          {/* Group Profile Picture */}
+          <View style={styles.groupImageContainer}>
+            {(isEditMode ? editingGroupImage : groupImage) ? (
+              <OptimizedImage source={{ uri: isEditMode ? editingGroupImage : groupImage }} style={styles.groupImage} />
+            ) : (
+              <View style={styles.imagePlaceholder}>
+                <Text style={styles.placeholderText}>
+                  {isEditMode ? 'tap to add photo' : 'add photo'}
+                </Text>
+              </View>
+            )}
+            
+            {/* Change cover photo overlay in edit mode */}
+            {isEditMode && (
+              <TouchableOpacity
+                style={styles.changePhotoOverlay}
+                onPress={pickImage}
+                activeOpacity={0.8}
+              >
+                <View style={styles.changePhotoButton}>
+                  <Ionicons name="camera" size={16} color={theme.colors.text} />
+                  <Text style={styles.changePhotoText}>Change cover photo</Text>
+                </View>
+              </TouchableOpacity>
             )}
           </View>
-          <View style={styles.memberInfo}>
-            <Text style={styles.memberName}>{userData?.username || 'User'}</Text>
-            <Text style={styles.memberStatus}>Posted</Text>
-          </View>
-        </View>
-      </Animated.View>
+          
+          {/* Group Code */}
+          {groupData?.code && (
+            <View style={styles.groupCodeContainer}>
+              <Text style={styles.groupCodeText}>code: {groupData.code}</Text>
+              <TouchableOpacity
+                style={styles.copyButton}
+                onPress={async () => {
+                  await Clipboard.setStringAsync(groupData.code);
+                  Toast.show({
+                    type: 'success',
+                    text1: 'Copied to clipboard',
+                    position: 'bottom',
+                    visibilityTime: 1200,
+                    autoHide: true,
+                    bottomOffset: 60,
+                  });
+                }}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="copy-outline" size={16} color={theme.colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+          )}
+        </Animated.View>
 
-      {/* Action Buttons */}
-      <Animated.View
-        style={[
-          styles.buttonSection,
-          {
-            opacity: fadeAnim,
-            transform: [{ translateY: slideAnim }],
-          },
-        ]}
-      >
-        <TouchableOpacity
+        {/* Members List */}
+        <Animated.View
           style={[
-            styles.continueButton,
-            loading && styles.continueButtonDisabled
+            styles.membersSection,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }],
+            },
           ]}
-          onPress={handleContinue}
-          disabled={loading}
-          activeOpacity={0.8}
         >
-          <Text style={styles.continueButtonText}>
-            {loading ? 'Updating...' : 'Continue'}
-          </Text>
-        </TouchableOpacity>
-      </Animated.View>
-    </SafeAreaView>
+          <Text style={styles.membersTitle}>{groupData?.memberCount || 1} Member{groupData?.memberCount !== 1 ? 's' : ''}</Text>
+          <ScrollView 
+            style={styles.membersScrollView} 
+            contentContainerStyle={{ paddingBottom: 32 }} 
+            showsVerticalScrollIndicator={false}
+            nestedScrollEnabled={true}
+          >
+            {groupMembers.map(member => {
+              // Use the postedToday property that was fetched with member data
+              const postedToday = member.postedToday || false;
+              return (
+                <View style={styles.memberItem} key={member.uid}>
+                  <View style={styles.memberAvatar}>
+                    {member.profileImageURL ? (
+                      <OptimizedImage
+                        source={{ uri: member.profileImageURL }}
+                        style={styles.memberImage}
+                        showLoadingIndicator={false}
+                      />
+                    ) : (
+                      <Text style={styles.memberAvatarText}>
+                        {(member.username || member.email || 'U').charAt(0).toUpperCase()}
+                      </Text>
+                    )}
+                  </View>
+                  <View style={styles.memberInfo}>
+                    <Text style={styles.memberName}>{member.username || member.email || 'User'}</Text>
+                    {postedToday ? (
+                      <Text style={styles.memberStatus}>Posted</Text>
+                    ) : (
+                      <Text style={styles.memberStatusNotPosted}>No post yet</Text>
+                    )}
+                  </View>
+                </View>
+              );
+            })}
+          </ScrollView>
+        </Animated.View>
+
+        {/* Menu Modal */}
+        {menuVisible && (
+          <Animated.View
+            style={[
+              styles.menuOverlay,
+              {
+                opacity: menuOpacity,
+              },
+            ]}
+          >
+            <TouchableOpacity
+              style={styles.menuContainer}
+              activeOpacity={1}
+            >
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={handleEditGroup}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.menuItemText}>Edit group</Text>
+                <Ionicons name="pencil" size={16} color={theme.colors.text} style={styles.menuIcon} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={handleLeaveGroup}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.menuItemTextDanger}>Leave Group</Text>
+                <Ionicons name="log-out-outline" size={16} color={theme.colors.error} style={styles.menuIcon} />
+              </TouchableOpacity>
+            </TouchableOpacity>
+          </Animated.View>
+        )}
+        </View>
+
+      </SafeAreaView>
+      <Toast config={toastConfig} />
+    </>
   );
 }
 
@@ -329,33 +774,77 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.1)',
   },
+  headerTitleContainer: {
+    flex: 1,
+    alignItems: 'center',
+  },
   headerTitle: {
     fontSize: 24,
     fontWeight: '700',
     color: theme.colors.text,
     letterSpacing: -0.5,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  editableTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+    minWidth: 200,
+  },
+    editableTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: theme.colors.text,
+    letterSpacing: -0.5,
+    textAlign: 'center',
+    minWidth: 200,
+  },
+  clearButton: {
+    padding: 8,
+    marginLeft: 8,
+  },
+  saveButton: {
+    backgroundColor: theme.colors.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 22,
+    minWidth: 70,
+    alignItems: 'center',
+    shadowColor: theme.colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  saveButtonText: {
+    color: theme.colors.text,
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  streakContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  streakIcon: {
+    marginRight: 4,
+  },
+  streakText: {
+    fontSize: 16,
+    color: theme.colors.text,
+    fontWeight: '500',
   },
   menuButton: {
     width: 44,
     height: 44,
-    borderRadius: 22,
-    backgroundColor: theme.colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
-  groupInfo: {
+  groupInfoSection: {
     alignItems: 'center',
-    marginBottom: theme.spacing.xl,
-  },
-  memberCount: {
-    fontSize: 16,
-    color: theme.colors.textMuted,
-    fontWeight: '500',
-  },
-  imageSection: {
-    alignItems: 'center',
+    paddingHorizontal: theme.spacing.lg,
     marginBottom: theme.spacing.xl,
   },
   groupImageContainer: {
@@ -364,7 +853,7 @@ const styles = StyleSheet.create({
     height: 120,
     borderRadius: 60,
     overflow: 'hidden',
-    marginBottom: theme.spacing.md,
+    marginBottom: theme.spacing.lg,
   },
   groupImage: {
     width: '100%',
@@ -387,33 +876,30 @@ const styles = StyleSheet.create({
     color: '#71717A',
     fontWeight: '500',
   },
-  imageOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    opacity: 0,
-  },
-  activityContainer: {
+  groupCodeContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    justifyContent: 'center',
+    marginTop: 4,
   },
-  activityIcon: {
+  groupCodeText: {
     fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+    color: theme.colors.textMuted,
+    marginRight: 8,
   },
-  activityText: {
-    fontSize: 16,
-    color: theme.colors.text,
-    fontWeight: '600',
+  copyButton: {
+    padding: 4,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255,255,255,0.05)',
   },
   membersSection: {
     flex: 1,
     paddingHorizontal: theme.spacing.lg,
+  },
+  membersScrollView: {
+    flex: 1,
   },
   membersTitle: {
     fontSize: 18,
@@ -434,11 +920,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: theme.spacing.md,
+    aspectRatio: 1,
+    overflow: 'hidden',
   },
   memberImage: {
     width: '100%',
     height: '100%',
     borderRadius: 24,
+    aspectRatio: 1,
+    overflow: 'hidden',
   },
   memberAvatarText: {
     fontSize: 18,
@@ -459,33 +949,84 @@ const styles = StyleSheet.create({
     color: '#CD9F3E',
     fontWeight: '500',
   },
-  buttonSection: {
-    paddingHorizontal: theme.spacing.lg,
-    paddingBottom: theme.spacing.xl,
+  memberStatusNotPosted: {
+    fontSize: 14,
+    color: '#71717A',
+    fontWeight: '500',
   },
-  continueButton: {
-    backgroundColor: theme.colors.primary,
-    borderRadius: theme.borderRadius.lg,
-    paddingVertical: theme.spacing.lg,
-    paddingHorizontal: theme.spacing.xl,
+  menuBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 999,
+  },
+  menuOverlay: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    zIndex: 1000,
+  },
+  menuContainer: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.md,
+    padding: 4,
+    minWidth: 160,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  menuItem: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: theme.borderRadius.sm,
+  },
+  menuItemText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: theme.colors.text,
+    flex: 1,
+  },
+  menuItemTextDanger: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: theme.colors.error,
+    flex: 1,
+  },
+  menuIcon: {
+    marginLeft: 8,
+  },
+  changePhotoOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 60,
+    backgroundColor: 'rgba(0,0,0,0.3)',
     justifyContent: 'center',
-    marginBottom: theme.spacing.md,
-    shadowColor: theme.colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    alignItems: 'center',
+    zIndex: 1,
   },
-  continueButtonDisabled: {
-    opacity: 0.7,
-    backgroundColor: '#3a3a3a',
+  changePhotoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.primary,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 16,
   },
-  continueButtonText: {
-    color: '#FFFFFF',
-    fontSize: 18,
+  changePhotoText: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 12,
     fontWeight: '600',
-    letterSpacing: 0.5,
+    marginLeft: 6,
   },
-
 }); 

@@ -52,22 +52,15 @@ const formatDate = (date) => {
   
   const dateObj = date.toDate ? date.toDate() : new Date(date);
   const now = new Date();
-  const diffTime = Math.abs(now - dateObj);
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   
-  if (diffDays === 1) {
-    return 'Today';
-  } else if (diffDays === 2) {
-    return 'Yesterday';
-  } else if (diffDays <= 7) {
-    return `${diffDays - 1} days ago`;
-  } else {
-    return dateObj.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
-    });
-  }
+  // Show the date in a clean format
+  const options = { 
+    month: 'short', 
+    day: 'numeric',
+    year: dateObj.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+  };
+  
+  return dateObj.toLocaleDateString('en-US', options);
 };
 
 // Helper function to format rating

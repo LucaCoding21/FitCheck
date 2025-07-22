@@ -16,7 +16,7 @@ import { theme } from "../styles/theme";
 import notificationService from "../services/NotificationService";
 import OptimizedImage from "./OptimizedImage";
 
-export default function CommentInput({ fitId, onCommentAdded, placeholder = "Add a comment..." }) {
+export default function CommentInput({ fitId, onCommentAdded, placeholder = "Add a comment...", onFocus }) {
   const { user } = useAuth();
   const [commentText, setCommentText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -106,6 +106,12 @@ export default function CommentInput({ fitId, onCommentAdded, placeholder = "Add
     }
   };
 
+  const handleInputFocus = () => {
+    if (onFocus) {
+      onFocus();
+    }
+  };
+
   const isSubmitDisabled = !commentText.trim() || isSubmitting;
   const canSend = commentText.trim().length > 0 && !isSubmitting;
 
@@ -141,6 +147,7 @@ export default function CommentInput({ fitId, onCommentAdded, placeholder = "Add
           maxLength={500}
           blurOnSubmit={false}
           onSubmitEditing={handleSubmitComment}
+          onFocus={handleInputFocus}
         />
       </View>
 

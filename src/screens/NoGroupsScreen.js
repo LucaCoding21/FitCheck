@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { theme } from '../styles/theme';
 import OptimizedImage from '../components/OptimizedImage';
+import GroupModal from '../components/GroupModal';
 
 const { width, height } = Dimensions.get('window');
 
@@ -17,6 +18,8 @@ const NoGroupsScreen = ({ navigation }) => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
   const starScale = useRef(new Animated.Value(0.8)).current;
+  const [groupModalVisible, setGroupModalVisible] = useState(false);
+  const [groupModalInitialContent, setGroupModalInitialContent] = useState('create');
 
   useEffect(() => {
     // Entrance animations
@@ -41,13 +44,25 @@ const NoGroupsScreen = ({ navigation }) => {
   }, []);
 
   const handleJoinGroup = () => {
-    // Navigate to Groups screen
-    navigation.navigate('Groups');
+    setGroupModalInitialContent('join');
+    setGroupModalVisible(true);
   };
 
   const handleCreateGroup = () => {
-    // Navigate to Groups screen
-    navigation.navigate('Groups');
+    setGroupModalInitialContent('create');
+    setGroupModalVisible(true);
+  };
+
+  const handleGroupModalClose = () => {
+    setGroupModalVisible(false);
+  };
+
+  const handleGroupCreated = (groupId, groupName) => {
+    navigation.replace('Main', { selectedGroup: groupId });
+  };
+
+  const handleGroupJoined = (groupId) => {
+    navigation.replace('Main', { selectedGroup: groupId });
   };
 
   return (
@@ -146,6 +161,13 @@ const NoGroupsScreen = ({ navigation }) => {
           </TouchableOpacity>
         </Animated.View>
       </Animated.View>
+      <GroupModal
+        visible={groupModalVisible}
+        initialContent={groupModalInitialContent}
+        onClose={handleGroupModalClose}
+        onGroupCreated={handleGroupCreated}
+        onGroupJoined={handleGroupJoined}
+      />
     </View>
   );
 };

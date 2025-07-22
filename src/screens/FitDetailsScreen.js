@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -29,6 +29,7 @@ export default function FitDetailsScreen({ navigation, route }) {
   const [loading, setLoading] = useState(true);
   const [fadeAnim] = useState(new Animated.Value(0));
   const [slideAnim] = useState(new Animated.Value(50));
+  const scrollViewRef = useRef(null);
 
   useEffect(() => {
     fetchFitDetails();
@@ -77,6 +78,19 @@ export default function FitDetailsScreen({ navigation, route }) {
     // The fit will be updated automatically via the onSnapshot listener
   };
 
+  const scrollToBottom = () => {
+    if (scrollViewRef.current) {
+      scrollViewRef.current.scrollToEnd({ animated: true });
+    }
+  };
+
+  const handleCommentFocus = () => {
+    // Add a small delay to ensure the keyboard is fully shown
+    setTimeout(() => {
+      scrollToBottom();
+    }, 300);
+  };
+
   const calculateDisplayRating = (fit) => {
     if (fit.fairRating && fit.fairRating > 0) {
       return fit.fairRating.toFixed(1);
@@ -115,6 +129,36 @@ export default function FitDetailsScreen({ navigation, route }) {
     
     const diffInDays = Math.floor(diffInHours / 24);
     return `${diffInDays}d ago`;
+  };
+
+  const formatFitDate = (timestamp) => {
+    if (!timestamp) return '';
+    
+    const fitDate = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const fitDay = new Date(fitDate.getFullYear(), fitDate.getMonth(), fitDate.getDate());
+    
+    // Check if it's today
+    if (fitDay.getTime() === today.getTime()) {
+      return 'Today';
+    }
+    
+    // Check if it's yesterday
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (fitDay.getTime() === yesterday.getTime()) {
+      return 'Yesterday';
+    }
+    
+    // For other dates, show the date in a nice format
+    const options = { 
+      month: 'short', 
+      day: 'numeric',
+      year: fitDate.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+    };
+    
+    return fitDate.toLocaleDateString('en-US', options);
   };
 
   if (loading) {
@@ -165,6 +209,7 @@ export default function FitDetailsScreen({ navigation, route }) {
           style={styles.scrollView}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
+          ref={scrollViewRef}
         >
           <Animated.View
             style={[
@@ -212,7 +257,7 @@ export default function FitDetailsScreen({ navigation, route }) {
                 </View>
                 <View style={styles.userDetails}>
                   <Text style={styles.username}>{fit.userName || 'Anonymous'}</Text>
-                  <Text style={styles.groupName}>Kappa Group</Text>
+                  <Text style={styles.fitDate}>{formatFitDate(fit.createdAt)}</Text>
                 </View>
               </View>
               <View style={styles.ratingContainer}>
@@ -263,6 +308,7 @@ export default function FitDetailsScreen({ navigation, route }) {
             fitId={fit.id} 
             onCommentAdded={handleCommentAdded}
             placeholder="Add a comment"
+            onFocus={handleCommentFocus}
           />
         </View>
       </KeyboardAvoidingView>
@@ -391,7 +437,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     marginBottom: 2,
   },
-  groupName: {
+  fitDate: {
     fontSize: 13,
     color: '#71717A',
   },

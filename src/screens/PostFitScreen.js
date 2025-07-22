@@ -26,7 +26,6 @@ import { useAuth } from "../contexts/AuthContext";
 import { theme } from "../styles/theme";
 import KeyboardAwareContainer from "../components/KeyboardAwareContainer";
 import CaptionInput from "../components/CaptionInput";
-import * as ImagePicker from "expo-image-picker";
 import notificationService from "../services/NotificationService";
 import OptimizedImage from "../components/OptimizedImage";
 
@@ -34,13 +33,12 @@ const { width, height } = Dimensions.get('window');
 
 export default function PostFitScreen({ navigation, route }) {
   const { user } = useAuth();
-  const [image, setImage] = useState(null);
+  const [image, setImage] = useState(route.params?.selectedImage || null);
   const [caption, setCaption] = useState("");
   const [tag, setTag] = useState("");
   const [loading, setLoading] = useState(false);
   const [userGroups, setUserGroups] = useState([]);
   const [groupMembers, setGroupMembers] = useState([]);
-  const [showImageOptions, setShowImageOptions] = useState(false);
   const [userName, setUserName] = useState("");
   const [userProfileImageURL, setUserProfileImageURL] = useState("");
   const [fadeAnim] = useState(new Animated.Value(0));
@@ -172,54 +170,7 @@ export default function PostFitScreen({ navigation, route }) {
     }
   };
 
-  const pickImage = async () => {
-    try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert("Permission needed", "Please grant camera roll permissions");
-        return;
-      }
 
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [3, 4],
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        setImage(result.assets[0].uri);
-        setShowImageOptions(false);
-      }
-    } catch (error) {
-      console.error("Error picking image:", error);
-      Alert.alert("Error", "Failed to pick image");
-    }
-  };
-
-  const takePhoto = async () => {
-    try {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert("Permission needed", "Please grant camera permissions");
-        return;
-      }
-
-      const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
-        aspect: [3, 4],
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        setImage(result.assets[0].uri);
-        setShowImageOptions(false);
-      }
-    } catch (error) {
-      console.error("Error taking photo:", error);
-      Alert.alert("Error", "Failed to take photo");
-    }
-  };
 
   const uploadImage = async (uri) => {
     try {
@@ -277,16 +228,14 @@ export default function PostFitScreen({ navigation, route }) {
 
       const fitDocRef = await addDoc(collection(db, "fits"), fitData);
 
-      // Send notifications to group members about new fit
-      try {
-        await notificationService.sendNewFitNotificationToAllGroups(
-          fitDocRef.id,
-          userName,
-          userGroups
-        );
-      } catch (error) {
+      // Send notifications in the background (don't block UI)
+      notificationService.sendNewFitNotificationToAllGroups(
+        fitDocRef.id,
+        userName,
+        userGroups
+      ).catch(error => {
         console.error('Error sending new fit notifications:', error);
-      }
+      });
 
       Alert.alert("Success", "Your fit has been posted!", [
         {
@@ -386,7 +335,12 @@ export default function PostFitScreen({ navigation, route }) {
           >
             <TouchableOpacity
               style={styles.imageContainer}
-              onPress={() => !image && setShowImageOptions(true)}
+              onPress={() => {
+                if (!image) {
+                  // Navigate back to photo picker
+                  navigation.navigate('PostFlow');
+                }
+              }}
               activeOpacity={image ? 1 : 0.8}
             >
               {image ? (
@@ -404,7 +358,10 @@ export default function PostFitScreen({ navigation, route }) {
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={styles.actionButton}
-                        onPress={() => setShowImageOptions(true)}
+                        onPress={() => {
+                          // Navigate back to photo picker
+                          navigation.navigate('PostFlow');
+                        }}
                       >
                         <View style={styles.actionButtonContainer}>
                           <Text style={styles.actionIcon}>🔄</Text>
@@ -429,49 +386,7 @@ export default function PostFitScreen({ navigation, route }) {
             </TouchableOpacity>
           </Animated.View>
 
-          {/* Photo Options */}
-          {(!image || showImageOptions) && (
-            <Animated.View 
-              style={[
-                styles.photoOptions,
-                { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }
-              ]}
-            >
-              <TouchableOpacity
-                style={styles.photoOption}
-                onPress={async () => {
-                  setShowImageOptions(false);
-                  await takePhoto();
-                }}
-                activeOpacity={0.8}
-              >
-                <View style={styles.photoOptionContainer}>
-                  <View style={styles.photoOptionContent}>
-                    <Text style={styles.photoOptionIcon}>📷</Text>
-                    <Text style={styles.photoOptionText}>Camera</Text>
-                    <Text style={styles.photoOptionSubtext}>Take new photo</Text>
-                  </View>
-                </View>
-              </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.photoOption}
-                onPress={async () => {
-                  setShowImageOptions(false);
-                  await pickImage();
-                }}
-                activeOpacity={0.8}
-              >
-                <View style={styles.photoOptionContainer}>
-                  <View style={styles.photoOptionContent}>
-                    <Text style={styles.photoOptionIcon}>🖼️</Text>
-                    <Text style={styles.photoOptionText}>Gallery</Text>
-                    <Text style={styles.photoOptionSubtext}>Choose existing</Text>
-                  </View>
-                </View>
-              </TouchableOpacity>
-            </Animated.View>
-          )}
 
           {/* Form Section */}
           <Animated.View 
@@ -724,42 +639,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
 
-  // Photo options styles
-  photoOptions: {
-    flexDirection: "row",
-    gap: theme.spacing.sm,
-    marginBottom: theme.spacing.xl,
-  },
-  photoOption: {
-    flex: 1,
-    borderRadius: theme.borderRadius.lg,
-    overflow: "hidden",
-    ...theme.shadows.sm,
-  },
-  photoOptionContainer: {
-    padding: theme.spacing.md,
-    alignItems: "center",
-    backgroundColor: theme.colors.surface,
-  },
-  photoOptionContent: {
-    alignItems: "center",
-  },
-  photoOptionIcon: {
-    fontSize: 24,
-    marginBottom: theme.spacing.xs,
-  },
-  photoOptionText: {
-    fontSize: 16,
-    color: theme.colors.text,
-    fontWeight: "600",
-    marginBottom: 2,
-    letterSpacing: 0.3,
-  },
-  photoOptionSubtext: {
-    fontSize: 12,
-    color: theme.colors.textSecondary,
-    letterSpacing: 0.3,
-  },
+
 
   // Form section styles
   formSection: {

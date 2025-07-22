@@ -7,6 +7,7 @@ import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firesto
 import { db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import OptimizedImage from '../components/OptimizedImage';
+import CustomPhotoPicker from '../components/CustomPhotoPicker';
 import HomeScreen from '../screens/HomeScreen';
 import PostFitScreen from '../screens/PostFitScreen';
 import GroupScreen from '../screens/GroupScreen';
@@ -21,7 +22,7 @@ const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
 // Modern Tab Bar Component
-function CustomTabBar({ state, descriptors, navigation }) {
+function CustomTabBar({ state, descriptors, navigation, setShowPhotoPicker }) {
   const { user } = useAuth();
   const [userProfileImageURL, setUserProfileImageURL] = useState(null);
   const scaleAnimations = useRef({}).current;
@@ -125,7 +126,10 @@ function CustomTabBar({ state, descriptors, navigation }) {
             return (
               <TouchableOpacity
                 key={route.key}
-                onPress={onPress}
+                onPress={() => {
+                  // Open photo picker directly
+                  setShowPhotoPicker(true);
+                }}
                 style={{
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -278,37 +282,56 @@ function CustomTabBar({ state, descriptors, navigation }) {
   );
 }
 
-function MainTabs({ route }) {
+function MainTabs({ route, navigation }) {
   const selectedGroup = route?.params?.selectedGroup;
+  const [showPhotoPicker, setShowPhotoPicker] = useState(false);
+  
+  const handleImageSelected = (imageUri) => {
+    setShowPhotoPicker(false);
+    // Navigate to PostFitScreen with the selected image
+    navigation.navigate('PostFit', { selectedImage: imageUri });
+  };
+
+  const handleClosePhotoPicker = () => {
+    setShowPhotoPicker(false);
+  };
   
   return (
-    <Tab.Navigator
-      tabBar={(props) => <CustomTabBar {...props} />}
-      screenOptions={{ 
-        headerShown: false,
-        tabBarStyle: {
-          backgroundColor: 'transparent',
-          borderTopWidth: 0,
-          elevation: 0,
-          shadowOpacity: 0,
-          position: 'absolute',
-          bottom: 0,
-          left: 0,
-          right: 0,
-        },
-        tabBarBackground: () => null,
-      }}
-    >
-      <Tab.Screen 
-        name="Home" 
-        component={HomeScreen}
-        initialParams={{ selectedGroup }}
+    <>
+      <Tab.Navigator
+        tabBar={(props) => <CustomTabBar {...props} setShowPhotoPicker={setShowPhotoPicker} />}
+        screenOptions={{ 
+          headerShown: false,
+          tabBarStyle: {
+            backgroundColor: 'transparent',
+            borderTopWidth: 0,
+            elevation: 0,
+            shadowOpacity: 0,
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            right: 0,
+          },
+          tabBarBackground: () => null,
+        }}
+      >
+        <Tab.Screen 
+          name="Home" 
+          component={HomeScreen}
+          initialParams={{ selectedGroup }}
+        />
+        <Tab.Screen name="Leaderboard" component={LeaderboardScreen} />
+        <Tab.Screen name="PostFit" component={HomeScreen} />
+        <Tab.Screen name="Groups" component={GroupScreen} />
+        <Tab.Screen name="Profile" component={ProfileScreen} />
+      </Tab.Navigator>
+      
+      <CustomPhotoPicker
+        visible={showPhotoPicker}
+        onClose={handleClosePhotoPicker}
+        onImageSelected={handleImageSelected}
       />
-      <Tab.Screen name="Leaderboard" component={LeaderboardScreen} />
-      <Tab.Screen name="PostFit" component={PostFitScreen} />
-      <Tab.Screen name="Groups" component={GroupScreen} />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
-    </Tab.Navigator>
+    </>
   );
 }
 
@@ -432,6 +455,7 @@ function MainNavigator({ route }) {
             component={MainTabs}
             initialParams={{ selectedGroup }}
           />
+          <Stack.Screen name="PostFit" component={PostFitScreen} />
           <Stack.Screen name="GroupDetails" component={GroupDetailsScreen} />
           <Stack.Screen name="FitDetails" component={FitDetailsScreen} />
         </>

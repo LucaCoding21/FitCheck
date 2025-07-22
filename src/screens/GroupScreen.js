@@ -23,13 +23,17 @@ import {
   doc,
   updateDoc,
   arrayUnion,
+  arrayRemove,
   query,
   where,
   getDocs,
+  getDoc,
 } from "firebase/firestore";
 import { db } from "../config/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { theme } from "../styles/theme";
+import { useFocusEffect } from '@react-navigation/native';
+import GroupModal from '../components/GroupModal';
 
 const { width } = Dimensions.get('window');
 
@@ -40,16 +44,11 @@ export default function GroupScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [fadeAnim] = useState(new Animated.Value(0));
   const [slideAnim] = useState(new Animated.Value(50));
+  const [settingsMode, setSettingsMode] = useState(false);
   
   // Single modal state with content switching
-  const [showModal, setShowModal] = useState(false);
-  const [modalContent, setModalContent] = useState('create'); // 'create' or 'join'
-  const [groupName, setGroupName] = useState("");
-  const [groupCode, setGroupCode] = useState("");
-  
-  // Animation values for smooth content transitions
-  const contentSlideAnim = useRef(new Animated.Value(0)).current;
-  const contentOpacityAnim = useRef(new Animated.Value(1)).current;
+  const [groupModalVisible, setGroupModalVisible] = useState(false);
+  const [groupModalInitialContent, setGroupModalInitialContent] = useState('create');
 
   useEffect(() => {
     fetchUserGroups();
@@ -73,6 +72,13 @@ export default function GroupScreen({ navigation }) {
       Keyboard.dismiss();
     };
   }, []);
+
+  // Refresh groups when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchUserGroups();
+    }, [])
+  );
 
   const fetchUserGroups = async () => {
     try {
@@ -146,182 +152,77 @@ export default function GroupScreen({ navigation }) {
     }
   };
 
-  const createGroup = () => {
-    setModalContent('create');
-    setShowModal(true);
-    // Reset animation values
-    contentSlideAnim.setValue(0);
-    contentOpacityAnim.setValue(1);
+  const openCreateGroupModal = () => {
+    setGroupModalInitialContent('create');
+    setGroupModalVisible(true);
+  };
+  const openJoinGroupModal = () => {
+    setGroupModalInitialContent('join');
+    setGroupModalVisible(true);
+  };
+  const handleGroupModalClose = () => {
+    setGroupModalVisible(false);
+  };
+  const handleGroupCreated = (groupId, groupName) => {
+    navigation.navigate('GroupDetails', { groupId, groupName });
+  };
+  const handleGroupJoined = (groupId) => {
+    navigation.replace('Main', { selectedGroup: groupId });
   };
 
-  const handleCreateGroup = async () => {
-    if (!groupName.trim()) {
-      Alert.alert("Error", "Please enter a group name");
-      return;
-    }
+  const handleLeaveGroup = async (groupId, groupName) => {
+    Alert.alert(
+      'Leave Group',
+      `Are you sure you want to leave "${groupName}"? You won't be able to see the group's fits anymore.`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Leave Group',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setLoading(true);
+              
+              // Remove user from group's members array
+              await updateDoc(doc(db, 'groups', groupId), {
+                members: arrayRemove(user.uid),
+                memberCount: userGroups.find(g => g.id === groupId)?.memberCount - 1,
+              });
 
-    setLoading(true);
-    try {
-      const groupCode = Math.random()
-        .toString(36)
-        .substring(2, 8)
-        .toUpperCase();
+              // Remove group from user's groups array
+              const userDoc = await getDoc(doc(db, 'users', user.uid));
+              if (userDoc.exists()) {
+                const userData = userDoc.data();
+                const updatedGroups = userData.groups?.filter(g => g !== groupId) || [];
+                await updateDoc(doc(db, 'users', user.uid), {
+                  groups: updatedGroups,
+                });
+              }
 
-      const groupRef = await addDoc(collection(db, "groups"), {
-        name: groupName.trim(),
-        description: "", // Empty description as per database schema
-        code: groupCode,
-        createdBy: user.uid,
-        members: [user.uid],
-        createdAt: new Date(),
-        memberCount: 1,
-      });
-
-      // Wait for user groups to be fetched before navigating
-      await fetchUserGroups();
-      
-      // Close modal and reset form
-      setShowModal(false);
-      setGroupName("");
-      
-      // Navigate to GroupDetailsScreen with the newly created group
-      navigation.navigate("GroupDetails", { groupId: groupRef.id, groupName: groupName.trim() });
-    } catch (error) {
-      console.error("Error in createGroup:", error);
-      Alert.alert("Error", error.message);
-    }
-    setLoading(false);
+              // Refresh groups list
+              await fetchUserGroups();
+              
+              // Exit settings mode
+              setSettingsMode(false);
+              
+            } catch (error) {
+              console.error('Error leaving group:', error);
+              Alert.alert('Error', 'Failed to leave group. Please try again.');
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
-  const handleJoinGroup = async () => {
-    if (!groupCode.trim()) {
-      Alert.alert("Error", "Please enter a group code");
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const groupsQuery = query(
-        collection(db, "groups"),
-        where("code", "==", groupCode.toUpperCase())
-      );
-      const snapshot = await getDocs(groupsQuery);
-
-      if (snapshot.empty) {
-        Alert.alert("Error", "Group not found");
-        setLoading(false);
-        return;
-      }
-
-      const groupDoc = snapshot.docs[0];
-      const groupData = groupDoc.data();
-
-      if (groupData.members.includes(user.uid)) {
-        Alert.alert("Info", "You are already in this group");
-        setLoading(false);
-        return;
-      }
-
-      if (groupData.members.length >= 20) {
-        Alert.alert("Error", "Group is full (max 20 members)");
-        setLoading(false);
-        return;
-      }
-
-      await updateDoc(doc(db, "groups", groupDoc.id), {
-        members: arrayUnion(user.uid),
-        memberCount: groupData.members.length + 1,
-      });
-
-      // Wait for user groups to be fetched before navigating
-      await fetchUserGroups();
-      
-      // Close modal and reset form
-      setShowModal(false);
-      setGroupCode("");
-      
-      // Navigate directly to Main with the newly joined group selected
-      navigation.replace("Main", { selectedGroup: groupDoc.id });
-    } catch (error) {
-      console.error("Error in joinGroup:", error);
-      Alert.alert("Error", error.message);
-    }
-    setLoading(false);
-  };
-
-  const switchToJoinModal = () => {
-    // Animate out current content
-    Animated.parallel([
-      Animated.timing(contentOpacityAnim, {
-        toValue: 0,
-        duration: 150,
-        useNativeDriver: true,
-      }),
-      Animated.timing(contentSlideAnim, {
-        toValue: -20,
-        duration: 150,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      // Switch content and animate in
-      setModalContent('join');
-      contentSlideAnim.setValue(20);
-      
-      Animated.parallel([
-        Animated.timing(contentOpacityAnim, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(contentSlideAnim, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    });
-  };
-
-  const switchToCreateModal = () => {
-    // Animate out current content
-    Animated.parallel([
-      Animated.timing(contentOpacityAnim, {
-        toValue: 0,
-        duration: 150,
-        useNativeDriver: true,
-      }),
-      Animated.timing(contentSlideAnim, {
-        toValue: 20,
-        duration: 150,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      // Switch content and animate in
-      setModalContent('create');
-      contentSlideAnim.setValue(-20);
-      
-      Animated.parallel([
-        Animated.timing(contentOpacityAnim, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(contentSlideAnim, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    });
-  };
-
-  const closeModal = () => {
-    setShowModal(false);
-    setGroupName("");
-    setGroupCode("");
-    // Reset animation values
-    contentSlideAnim.setValue(0);
-    contentOpacityAnim.setValue(1);
+  const toggleSettingsMode = () => {
+    console.log('Toggle settings mode, current:', settingsMode);
+    setSettingsMode(!settingsMode);
   };
 
   const renderGroupCard = ({ item, index }) => {
@@ -353,7 +254,7 @@ export default function GroupScreen({ navigation }) {
       >
         <TouchableOpacity
           style={styles.groupCardTouchable}
-          onPress={() => navigation.navigate("GroupDetails", { groupId: item.id, groupName: item.name })}
+          onPress={() => !settingsMode && navigation.navigate("GroupDetails", { groupId: item.id, groupName: item.name })}
           onPressIn={handlePressIn}
           onPressOut={handlePressOut}
           activeOpacity={1}
@@ -378,9 +279,20 @@ export default function GroupScreen({ navigation }) {
             </Text>
           </View>
           <View style={styles.activityContainer}>
-            <Text style={styles.activityText}>
-              {item.postedToday || 0}/{item.memberCount} posted today
-            </Text>
+            {settingsMode ? (
+              <TouchableOpacity
+                style={styles.leaveButton}
+                onPress={() => handleLeaveGroup(item.id, item.name)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="exit-outline" size={20} color={theme.colors.error} />
+                <Text style={styles.leaveButtonText}>Leave</Text>
+              </TouchableOpacity>
+            ) : (
+              <Text style={styles.activityText}>
+                {item.postedToday || 0}/{item.memberCount} posted today
+              </Text>
+            )}
           </View>
         </TouchableOpacity>
       </Animated.View>
@@ -408,11 +320,15 @@ export default function GroupScreen({ navigation }) {
         <View style={styles.header}>
           <Text style={styles.title}>Groups</Text>
           <TouchableOpacity
-            onPress={() => navigation.navigate("Profile")}
-            style={styles.settingsButton}
+            onPress={toggleSettingsMode}
+            style={[styles.settingsButton, settingsMode && styles.settingsButtonActive]}
             activeOpacity={0.7}
           >
-            <Ionicons name="settings-outline" size={20} color={theme.colors.text} />
+            <Ionicons 
+              name={settingsMode ? "checkmark" : "settings-outline"} 
+              size={20} 
+              color={settingsMode ? theme.colors.primary : theme.colors.text} 
+            />
           </TouchableOpacity>
         </View>
 
@@ -446,7 +362,7 @@ export default function GroupScreen({ navigation }) {
           ListFooterComponent={() => (
             <TouchableOpacity
               style={styles.newGroupButton}
-              onPress={createGroup}
+              onPress={openCreateGroupModal}
               activeOpacity={0.8}
             >
               <View style={styles.newGroupIcon}>
@@ -459,123 +375,13 @@ export default function GroupScreen({ navigation }) {
       </Animated.View>
 
       {/* Single Modal with Animated Content */}
-      <Modal
-        visible={showModal}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={closeModal}
-      >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={closeModal}
-        >
-          <TouchableOpacity
-            style={styles.modalContainer}
-            activeOpacity={1}
-            onPress={(e) => e.stopPropagation()}
-          >
-            <Animated.View 
-              style={[
-                styles.modalContent,
-                {
-                  opacity: contentOpacityAnim,
-                  transform: [{ translateX: contentSlideAnim }],
-                },
-              ]}
-            >
-              {/* Close Button */}
-              <TouchableOpacity
-                style={styles.closeButton}
-                onPress={closeModal}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.closeButtonText}>✕</Text>
-              </TouchableOpacity>
-
-              {/* Create Group Content */}
-              {modalContent === 'create' && (
-                <>
-                  <Text style={styles.modalTitle}>Create a new group</Text>
-                  
-                  <TextInput
-                    style={styles.modalInput}
-                    placeholder="Enter group name"
-                    placeholderTextColor="#8A8A8A"
-                    value={groupName}
-                    onChangeText={setGroupName}
-                    autoCapitalize="words"
-                    autoCorrect={false}
-                  />
-                  
-                  <TouchableOpacity
-                    style={styles.modalButton}
-                    onPress={handleCreateGroup}
-                    disabled={loading}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.modalButtonText}>
-                      {loading ? "Creating..." : "Create group"}
-                    </Text>
-                  </TouchableOpacity>
-                  
-                  <View style={styles.modalDivider} />
-                  
-                  <Text style={styles.modalSubtitle}>Have an invite?</Text>
-                  
-                  <TouchableOpacity
-                    style={styles.modalButton}
-                    onPress={switchToJoinModal}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.modalButtonText}>Join a group</Text>
-                  </TouchableOpacity>
-                </>
-              )}
-
-              {/* Join Group Content */}
-              {modalContent === 'join' && (
-                <>
-                  <View style={styles.joinModalHeader}>
-                    <TouchableOpacity
-                      style={styles.backButton}
-                      onPress={switchToCreateModal}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.backButtonText}>‹</Text>
-                    </TouchableOpacity>
-                    
-                    <Text style={styles.modalTitle}>Join a Group</Text>
-                    
-                    <View style={styles.placeholderButton} />
-                  </View>
-                  
-                  <TextInput
-                    style={styles.modalInput}
-                    placeholder="Enter code"
-                    placeholderTextColor="#8A8A8A"
-                    value={groupCode}
-                    onChangeText={setGroupCode}
-                    autoCapitalize="characters"
-                    autoCorrect={false}
-                  />
-                  
-                  <TouchableOpacity
-                    style={styles.modalButton}
-                    onPress={handleJoinGroup}
-                    disabled={loading}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.modalButtonText}>
-                      {loading ? "Joining..." : "Join Group"}
-                    </Text>
-                  </TouchableOpacity>
-                </>
-              )}
-            </Animated.View>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
+      <GroupModal
+        visible={groupModalVisible}
+        initialContent={groupModalInitialContent}
+        onClose={handleGroupModalClose}
+        onGroupCreated={handleGroupCreated}
+        onGroupJoined={handleGroupJoined}
+      />
     </SafeAreaView>
   );
 }
@@ -611,6 +417,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  settingsButtonActive: {
+    backgroundColor: 'rgba(196, 77, 77, 0.2)',
+    borderColor: theme.colors.primary,
   },
   searchContainer: {
     position: 'relative',
@@ -673,11 +483,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginRight: 16,
+    aspectRatio: 1, // Ensure perfect circle
+    overflow: 'hidden', // Crop image to circle
   },
   groupAvatarImage: {
     width: '100%',
     height: '100%',
     borderRadius: 20,
+    aspectRatio: 1, // Ensure image is square
+    overflow: 'hidden', // Crop image to circle
   },
   groupAvatarText: {
     fontSize: 18,
@@ -705,6 +519,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#CD9F3E', // Golden-yellow color for activity
     fontWeight: "600",
+  },
+  leaveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(220, 38, 38, 0.1)',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(220, 38, 38, 0.3)',
+  },
+  leaveButtonText: {
+    fontSize: 14,
+    color: theme.colors.error,
+    fontWeight: '600',
+    marginLeft: 6,
   },
   newGroupButton: {
     backgroundColor: '#652721', // Exact color from design
