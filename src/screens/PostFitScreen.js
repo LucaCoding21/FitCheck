@@ -10,7 +10,8 @@ import {
   Animated,
   Dimensions,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
+import { Ionicons } from '@expo/vector-icons';
+import * as MediaLibrary from 'expo-media-library';
 import {
   collection,
   addDoc,
@@ -28,14 +29,16 @@ import KeyboardAwareContainer from "../components/KeyboardAwareContainer";
 import CaptionInput from "../components/CaptionInput";
 import notificationService from "../services/NotificationService";
 import OptimizedImage from "../components/OptimizedImage";
+import Toast, { BaseToast, ErrorToast } from 'react-native-toast-message';
+import * as Haptics from 'expo-haptics';
 
 const { width, height } = Dimensions.get('window');
 
 export default function PostFitScreen({ navigation, route }) {
   const { user } = useAuth();
-  const [image, setImage] = useState(route.params?.selectedImage || null);
+  const [image, setImage] = useState(route.params?.selectedImage || null); // image is now the asset object
   const [caption, setCaption] = useState("");
-  const [tag, setTag] = useState("");
+  const [selectedTag, setSelectedTag] = useState("");
   const [loading, setLoading] = useState(false);
   const [userGroups, setUserGroups] = useState([]);
   const [groupMembers, setGroupMembers] = useState([]);
@@ -44,20 +47,8 @@ export default function PostFitScreen({ navigation, route }) {
   const [fadeAnim] = useState(new Animated.Value(0));
   const [slideAnim] = useState(new Animated.Value(50));
   const [scaleAnim] = useState(new Animated.Value(0.8));
-  const [popularHashtags] = useState([
-    "ootd",
-    "style",
-    "fashion",
-    "casual",
-    "formal",
-    "streetwear",
-    "vintage",
-    "trendy",
-    "outfit",
-    "look",
-    "vibe",
-    "aesthetic",
-  ] || []);
+
+  const availableTags = ["Casual", "HomeFit", "WorkFit", "GymFit"];
 
   useEffect(() => {
     animateIn();
@@ -170,11 +161,17 @@ export default function PostFitScreen({ navigation, route }) {
     }
   };
 
-
-
-  const uploadImage = async (uri) => {
+  const uploadImage = async (asset) => {
     try {
-      const response = await fetch(uri);
+      let uploadUri = asset?.localUri || asset?.uri;
+      if ((!uploadUri || uploadUri.startsWith('ph://')) && asset?.id) {
+        const assetInfo = await MediaLibrary.getAssetInfoAsync(asset.id);
+        uploadUri = assetInfo.localUri || assetInfo.uri;
+      }
+      if (!uploadUri || uploadUri.startsWith('ph://')) {
+        throw new Error('Could not resolve a valid file path for the selected photo. Please try a different photo.');
+      }
+      const response = await fetch(uploadUri);
       const blob = await response.blob();
       const filename = `fits/${user.uid}/${Date.now()}.jpg`;
       const storageRef = ref(storage, filename);
@@ -184,6 +181,60 @@ export default function PostFitScreen({ navigation, route }) {
       console.error("Error uploading image:", error);
       throw error;
     }
+  };
+
+  // Custom Toast config (reuse from SignInScreen/GroupDetailsScreen)
+  const toastConfig = {
+    success: (props) => (
+      <BaseToast
+        {...props}
+        style={{
+          backgroundColor: '#2a2a2a',
+          borderLeftColor: 'transparent',
+          borderRadius: 12,
+          minHeight: 48,
+          alignItems: 'center',
+          shadowOpacity: 0,
+          marginHorizontal: 16,
+        }}
+        contentContainerStyle={{ paddingHorizontal: 12 }}
+        text1Style={{
+          color: '#FFFFFF',
+          fontSize: 16,
+          fontWeight: '700',
+          letterSpacing: 0.5,
+        }}
+        text2Style={{ color: '#71717A' }}
+        renderLeadingIcon={() => (
+          <Ionicons name="checkmark-circle" size={22} color="#B5483D" style={{ marginRight: 8 }} />
+        )}
+      />
+    ),
+    error: (props) => (
+      <ErrorToast
+        {...props}
+        style={{
+          backgroundColor: '#2a2a2a',
+          borderLeftColor: 'transparent',
+          borderRadius: 12,
+          minHeight: 48,
+          alignItems: 'center',
+          shadowOpacity: 0,
+          marginHorizontal: 16,
+        }}
+        contentContainerStyle={{ paddingHorizontal: 12 }}
+        text1Style={{
+          color: '#FFFFFF',
+          fontSize: 16,
+          fontWeight: '700',
+          letterSpacing: 0.5,
+        }}
+        text2Style={{ color: '#71717A' }}
+        renderLeadingIcon={() => (
+          <Ionicons name="close-circle" size={22} color="#FF6B6B" style={{ marginRight: 8 }} />
+        )}
+      />
+    ),
   };
 
   const postFit = async () => {
@@ -216,7 +267,7 @@ export default function PostFitScreen({ navigation, route }) {
         userProfileImageURL: userProfileImageURL,
         imageURL: imageURL,
         caption: caption.trim(),
-        tag: tag.trim(),
+        tag: selectedTag.trim(),
         groupIds: userGroups.map((group) => group.id),
         ratings: {},
         ratingCount: 0,
@@ -237,16 +288,18 @@ export default function PostFitScreen({ navigation, route }) {
         console.error('Error sending new fit notifications:', error);
       });
 
-      Alert.alert("Success", "Your fit has been posted!", [
-        {
-          text: "OK",
-          onPress: () => navigation.goBack(),
-        },
-      ]);
+      // Stronger haptic feedback
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      // Navigate to Home tab in MainTabs and show toast
+      navigation.navigate('MainTabs', { screen: 'Home', params: { showPostToast: true } });
+
     } catch (error) {
       console.error("Error posting fit:", error);
       let errorMessage = "Failed to post fit. Please try again.";
 
+      if (error.message.includes('file path for the selected photo')) {
+        errorMessage = "Could not access the selected photo. Please try a different photo from your library.";
+      }
       if (error.code === "permission-denied") {
         errorMessage =
           "You don't have permission to post. Please check your account.";
@@ -273,50 +326,16 @@ export default function PostFitScreen({ navigation, route }) {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
+      <StatusBar barStyle="light-content" backgroundColor="#222222" />
 
-      {/* Clean Header */}
-      <Animated.View 
-        style={[
-          styles.header,
-          { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }
-        ]}
+      {/* Back Button */}
+      <TouchableOpacity
+        onPress={() => navigation.goBack()}
+        style={styles.backButton}
+        activeOpacity={0.7}
       >
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.backButton}
-        >
-          <View style={styles.backButtonContainer}>
-            <Text style={styles.backIcon}>←</Text>
-          </View>
-        </TouchableOpacity>
-
-        <View style={styles.headerCenter}>
-          <Text style={styles.title}>Share Your Fit</Text>
-          <Text style={styles.subtitle}>Show your style to the crew</Text>
-        </View>
-
-        <TouchableOpacity
-          onPress={postFit}
-          disabled={loading || !image}
-          style={[
-            styles.postButton,
-            (!image || loading) && styles.postButtonDisabled,
-          ]}
-          activeOpacity={0.8}
-        >
-          <View style={[
-            styles.postButtonContainer,
-            {
-              backgroundColor: image && !loading ? theme.colors.primary : theme.colors.textMuted,
-            }
-          ]}>
-            <Text style={styles.postButtonText}>
-              {loading ? "Posting..." : "Post"}
-            </Text>
-          </View>
-        </TouchableOpacity>
-      </Animated.View>
+        <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+      </TouchableOpacity>
 
       <KeyboardAwareContainer style={styles.contentContainer}>
         <ScrollView
@@ -333,125 +352,103 @@ export default function PostFitScreen({ navigation, route }) {
               { opacity: fadeAnim, transform: [{ scale: scaleAnim }] }
             ]}
           >
-            <TouchableOpacity
-              style={styles.imageContainer}
-              onPress={() => {
-                if (!image) {
-                  // Navigate back to photo picker
-                  navigation.navigate('PostFlow');
-                }
-              }}
-              activeOpacity={image ? 1 : 0.8}
-            >
-              {image ? (
-                <>
-                  <OptimizedImage source={{ uri: image }} style={styles.image} />
-                  <View style={styles.imageOverlay}>
-                    <View style={styles.imageActions}>
-                      <TouchableOpacity
-                        style={styles.actionButton}
-                        onPress={() => setImage(null)}
-                      >
-                        <View style={styles.actionButtonContainer}>
-                          <Text style={styles.actionIcon}>🗑️</Text>
-                        </View>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.actionButton}
-                        onPress={() => {
-                          // Navigate back to photo picker
-                          navigation.navigate('PostFlow');
-                        }}
-                      >
-                        <View style={styles.actionButtonContainer}>
-                          <Text style={styles.actionIcon}>🔄</Text>
-                        </View>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </>
-              ) : (
-                <View style={styles.imagePlaceholder}>
-                  <View style={styles.placeholderContent}>
-                    <View style={styles.placeholderIcon}>
-                      <Text style={styles.placeholderEmoji}>📸</Text>
-                    </View>
-                    <Text style={styles.placeholderTitle}>Add Your Fit</Text>
-                    <Text style={styles.placeholderSubtext}>
-                      Tap to capture or choose your style
-                    </Text>
-                  </View>
-                </View>
-              )}
-            </TouchableOpacity>
+            {image && (image.localUri || image.uri) ? (
+              <OptimizedImage 
+                source={{ uri: image.localUri || image.uri }} 
+                style={styles.image}
+                contentFit="cover"
+                priority="high"
+                cachePolicy="memory-disk"
+              />
+            ) : (
+              <View style={styles.imagePlaceholder}>
+                <Ionicons name="image-outline" size={48} color="#71717A" />
+                <Text style={styles.placeholderText}>Select a photo</Text>
+              </View>
+            )}
           </Animated.View>
 
-
-
-          {/* Form Section */}
+          {/* Caption Section */}
           <Animated.View 
             style={[
-              styles.formSection,
+              styles.captionSection,
               { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }
             ]}
           >
-            {/* Caption Input */}
-            <View style={styles.inputGroup}>
-              <View style={styles.inputHeader}>
-                <Text style={styles.inputLabel}>💬 Caption</Text>
-                <Text style={styles.inputHint}>Tag friends with @</Text>
-              </View>
+            <Text style={styles.sectionLabel}>Caption</Text>
+            <View style={styles.captionInputContainer}>
               <CaptionInput
-                value={caption || ""}
+                value={caption}
                 onChangeText={setCaption}
-                placeholder="What's the vibe? Share your style story..."
+                placeholder="What inspired your outfit today?"
                 maxLength={200}
                 users={groupMembers || []}
-                hashtags={popularHashtags || []}
+                hashtags={[]}
                 onMentionPress={(user) => {
                   console.log("Mentioned user:", user);
                 }}
+                style={styles.captionInput}
               />
             </View>
+          </Animated.View>
 
-            {/* Tag Input */}
-            <View style={styles.inputGroup}>
-              <View style={styles.inputHeader}>
-                <Text style={styles.inputLabel}>🏷️ Occasion</Text>
-                <Text style={styles.inputHint}>What's the vibe?</Text>
-              </View>
-              <CaptionInput
-                value={tag || ""}
-                onChangeText={setTag}
-                placeholder="casual, formal, date night, school..."
-                maxLength={50}
-                hashtags={popularHashtags || []}
-                onMentionPress={(hashtag) => {
-                  console.log("Selected hashtag:", hashtag);
+          {/* Tags Section */}
+          <Animated.View 
+            style={[
+              styles.tagsSection,
+              { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }
+            ]}
+          >
+            <Text style={styles.sectionLabel}>Tags</Text>
+            <View style={styles.tagsContainer}>
+              {availableTags.map((tag) => (
+                <TouchableOpacity
+                  key={tag}
+                  style={[
+                    styles.tagButton,
+                    selectedTag === tag && styles.tagButtonSelected
+                  ]}
+                  onPress={() => setSelectedTag(selectedTag === tag ? "" : tag)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[
+                    styles.tagText,
+                    selectedTag === tag && styles.tagTextSelected
+                  ]}>
+                    #{tag}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity
+                style={styles.addTagButton}
+                onPress={() => {
+                  // Could open a modal to add custom tags
+                  console.log("Add custom tag");
                 }}
-              />
-            </View>
-
-            {/* Quick Tags */}
-            <View style={styles.quickTagsSection}>
-              <Text style={styles.quickTagsTitle}>Quick Tags</Text>
-              <View style={styles.quickTagsContainer}>
-                {(["casual", "formal", "date", "school", "party", "work"] || []).map((tag) => (
-                  <TouchableOpacity
-                    key={tag}
-                    style={styles.quickTag}
-                    onPress={() => setTag(tag)}
-                  >
-                    <View style={styles.quickTagContainer}>
-                      <Text style={styles.quickTagText}>#{tag}</Text>
-                    </View>
-                  </TouchableOpacity>
-                ))}
-              </View>
+                activeOpacity={0.8}
+              >
+                <Text style={styles.addTagText}>+Add</Text>
+              </TouchableOpacity>
             </View>
           </Animated.View>
         </ScrollView>
       </KeyboardAwareContainer>
+
+      {/* Post Button */}
+      <TouchableOpacity
+        onPress={postFit}
+        disabled={loading || !image}
+        style={[
+          styles.postButton,
+          (!image || loading) && styles.postButtonDisabled,
+        ]}
+        activeOpacity={0.8}
+      >
+        <Text style={styles.postButtonText}>
+          {loading ? "Posting..." : "Post"}
+        </Text>
+      </TouchableOpacity>
+      <Toast config={toastConfig} />
     </View>
   );
 }
@@ -459,244 +456,135 @@ export default function PostFitScreen({ navigation, route }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background,
-  },
-
-  // Header styles
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingTop: 60,
-    paddingHorizontal: theme.spacing.md,
-    paddingBottom: theme.spacing.lg,
-    backgroundColor: theme.colors.background,
+    backgroundColor: '#222222',
   },
   backButton: {
+    position: 'absolute',
+    top: 60,
+    left: 20,
+    zIndex: 10,
     width: 44,
     height: 44,
-    borderRadius: theme.borderRadius.full,
-    overflow: "hidden",
-    ...theme.shadows.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  backButtonContainer: {
-    width: "100%",
-    height: "100%",
-    backgroundColor: theme.colors.surface,
-    justifyContent: "center",
-    alignItems: "center",
-    borderRadius: theme.borderRadius.full,
-  },
-  backIcon: {
-    fontSize: 20,
-    color: theme.colors.text,
-    fontWeight: "600",
-  },
-  headerCenter: {
-    flex: 1,
-    alignItems: "center",
-    marginHorizontal: theme.spacing.md,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: theme.colors.text,
-    marginBottom: 2,
-    letterSpacing: 0.5,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: theme.colors.textSecondary,
-    letterSpacing: 0.3,
-  },
-  postButton: {
-    width: 80,
-    height: 44,
-    borderRadius: theme.borderRadius.lg,
-    overflow: "hidden",
-    ...theme.shadows.sm,
-  },
-  postButtonDisabled: {
-    opacity: 0.5,
-  },
-  postButtonContainer: {
-    width: "100%",
-    height: "100%",
-    justifyContent: "center",
-    alignItems: "center",
-    borderRadius: theme.borderRadius.lg,
-  },
-  postButtonText: {
-    fontSize: 16,
-    color: theme.colors.text,
-    fontWeight: "600",
-    letterSpacing: 0.5,
-  },
-
-  // Content container styles
   contentContainer: {
     flex: 1,
+    paddingTop: 70, // Space for back button
   },
   scrollContainer: {
     flex: 1,
   },
   scrollContent: {
     flexGrow: 1,
-    padding: theme.spacing.md,
-    paddingBottom: 100, // Add bottom padding for navigator
+    paddingHorizontal: 20,
+    paddingBottom: 100,
   },
-
-  // Image section styles
   imageSection: {
-    marginBottom: theme.spacing.xl,
-    borderRadius: theme.borderRadius.lg,
-    overflow: "hidden",
-    ...theme.shadows.md,
-  },
-  imageContainer: {
-    aspectRatio: 3 / 4,
-    position: "relative",
+    aspectRatio: 1,
+    marginBottom: 20,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#333333',
+    alignSelf: 'center',
+    width: width - 40, // Account for horizontal padding
   },
   image: {
-    width: "100%",
-    height: "100%",
-    resizeMode: "cover",
-  },
-  imageOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(0, 0, 0, 0.3)",
-    borderRadius: theme.borderRadius.lg,
-  },
-  imageActions: {
-    position: "absolute",
-    top: theme.spacing.sm,
-    right: theme.spacing.sm,
-    flexDirection: "row",
-    gap: theme.spacing.xs,
-  },
-  actionButton: {
-    width: 40,
-    height: 40,
-    borderRadius: theme.borderRadius.full,
-    overflow: "hidden",
-    ...theme.shadows.md,
-  },
-  actionButtonContainer: {
-    width: "100%",
-    height: "100%",
-    backgroundColor: theme.colors.surface,
-    justifyContent: "center",
-    alignItems: "center",
-    borderRadius: theme.borderRadius.full,
-  },
-  actionIcon: {
-    fontSize: 16,
+    width: '100%',
+    height: '100%',
   },
   imagePlaceholder: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: theme.colors.surface,
-    borderWidth: 2,
-    borderColor: "rgba(255, 255, 255, 0.1)",
-    borderStyle: "dashed",
-    borderRadius: theme.borderRadius.lg,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#333333',
   },
-  placeholderContent: {
-    alignItems: "center",
-    paddingHorizontal: theme.spacing.lg,
+  placeholderText: {
+    color: '#71717A',
+    fontSize: 16,
+    marginTop: 12,
   },
-  placeholderIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.surface,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: theme.spacing.md,
+  captionSection: {
+    marginBottom: 20,
+  },
+  sectionLabel: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '500',
+    marginBottom: 8,
+  },
+  captionInputContainer: {
+    backgroundColor: '#333333',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  captionInput: {
+    backgroundColor: 'transparent',
+    color: '#FFFFFF',
+    fontSize: 16,
+    paddingHorizontal: 16,
+    paddingTop: 1,
+    paddingBottom: 28,
+    minHeight: 48,
+  },
+  tagsSection: {
+    marginBottom: 20,
+  },
+  tagsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  tagButton: {
+    backgroundColor: '#2A2A2A',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.1)",
+    borderColor: '#3C3C3C',
   },
-  placeholderEmoji: {
-    fontSize: 32,
+  tagButtonSelected: {
+    backgroundColor: '#B5483D63',
+    borderColor: '#923228',
   },
-  placeholderTitle: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: theme.colors.text,
-    marginBottom: theme.spacing.xs,
-    letterSpacing: 0.3,
-  },
-  placeholderSubtext: {
-    fontSize: 16,
-    color: theme.colors.textSecondary,
-    textAlign: "center",
-    lineHeight: 20,
-    letterSpacing: 0.3,
-  },
-
-
-
-  // Form section styles
-  formSection: {
-    gap: theme.spacing.lg,
-  },
-  inputGroup: {
-    gap: theme.spacing.sm,
-  },
-  inputHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: theme.spacing.xs,
-  },
-  inputLabel: {
-    fontSize: 16,
-    color: theme.colors.text,
-    fontWeight: "600",
-    letterSpacing: 0.3,
-  },
-  inputHint: {
-    fontSize: 12,
-    color: theme.colors.textMuted,
-    letterSpacing: 0.3,
-  },
-
-  // Quick tags styles
-  quickTagsSection: {
-    gap: theme.spacing.sm,
-  },
-  quickTagsTitle: {
-    fontSize: 16,
-    color: theme.colors.text,
-    fontWeight: "600",
-    paddingHorizontal: theme.spacing.xs,
-    letterSpacing: 0.3,
-  },
-  quickTagsContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: theme.spacing.xs,
-  },
-  quickTag: {
-    borderRadius: theme.borderRadius.full,
-    overflow: "hidden",
-    ...theme.shadows.sm,
-  },
-  quickTagContainer: {
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.surface,
-  },
-  quickTagText: {
+  tagText: {
+    color: '#FFFFFF',
     fontSize: 14,
-    color: theme.colors.textSecondary,
-    fontWeight: "500",
-    letterSpacing: 0.3,
+    fontWeight: '500',
+  },
+  tagTextSelected: {
+    color: '#FFFFFF',
+  },
+  addTagButton: {
+    backgroundColor: '#333333',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#333333',
+  },
+  addTagText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  postButton: {
+    position: 'absolute',
+    bottom: 40,
+    left: 20,
+    right: 20,
+    backgroundColor: '#D9534F',
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  postButtonDisabled: {
+    backgroundColor: '#333333',
+  },
+  postButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

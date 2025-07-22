@@ -214,27 +214,25 @@ const CaptionInput = ({
 
   return (
     <View style={[styles.container, style]}>
-      <View style={styles.inputContainer}>
-        <TextInput
-          ref={textInputRef}
-          style={styles.textInput}
-          value={value}
-          onChangeText={handleTextChange}
-          onSelectionChange={(event) => {
-            setCursorPosition(event.nativeEvent.selection.start);
-          }}
-          placeholder={placeholder}
-          placeholderTextColor={theme.colors.textMuted}
-          multiline
-          maxLength={maxLength}
-          textAlignVertical="top"
-        />
+      <TextInput
+        ref={textInputRef}
+        style={styles.textInput}
+        value={value}
+        onChangeText={handleTextChange}
+        onSelectionChange={(event) => {
+          setCursorPosition(event.nativeEvent.selection.start);
+        }}
+        placeholder={placeholder}
+        placeholderTextColor="#666666"
+        multiline
+        maxLength={maxLength}
+        textAlignVertical="top"
+      />
 
-        {/* Character count */}
-        <Text style={styles.characterCount}>
-          {value.length}/{maxLength}
-        </Text>
-      </View>
+      {/* Character count */}
+      <Text style={styles.characterCount}>
+        {value.length}/{maxLength}
+      </Text>
 
       {/* Suggestions dropdown */}
       {showSuggestions && (
@@ -260,67 +258,62 @@ const CaptionInput = ({
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: theme.spacing.md,
-  },
-  inputContainer: {
-    backgroundColor: theme.colors.surface,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.1)",
-    borderRadius: theme.borderRadius.lg,
-    ...theme.shadows.sm,
     position: "relative",
   },
   textInput: {
-    padding: theme.spacing.md,
     fontSize: 16,
-    color: theme.colors.text,
-    minHeight: 80,
-    maxHeight: 120,
+    color: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    minHeight: 48,
+    textAlignVertical: 'top',
   },
   characterCount: {
     position: "absolute",
-    bottom: theme.spacing.xs,
-    right: theme.spacing.sm,
-    ...theme.typography.caption,
-    color: theme.colors.textMuted,
+    bottom: 8,
+    right: 16,
+    color: '#666666',
     fontSize: 12,
   },
 
   // Parsed text styles (for preview)
   parsedText: {
-    ...theme.typography.body,
-    color: theme.colors.text,
+    color: '#FFFFFF',
   },
   textPart: {
-    color: theme.colors.text,
+    color: '#FFFFFF',
   },
   mention: {
-    color: theme.colors.primary,
+    color: '#D9534F',
     fontWeight: "600",
   },
   hashtag: {
-    color: theme.colors.secondary,
+    color: '#D9534F',
     fontWeight: "600",
   },
 
   // Suggestions styles
   suggestionsContainer: {
-    backgroundColor: theme.colors.surface,
+    backgroundColor: '#333333',
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.1)",
-    borderRadius: theme.borderRadius.lg,
-    marginTop: theme.spacing.xs,
+    borderRadius: 12,
+    marginTop: 4,
     overflow: "hidden",
-    ...theme.shadows.md,
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    zIndex: 1000,
   },
   suggestionItem: {
-    borderRadius: theme.borderRadius.md,
-    marginHorizontal: theme.spacing.xs,
+    borderRadius: 8,
+    marginHorizontal: 4,
     marginVertical: 2,
     overflow: "hidden",
   },
   suggestionGradient: {
-    padding: theme.spacing.sm,
+    padding: 12,
   },
   suggestionContent: {
     flexDirection: "row",
@@ -329,40 +322,39 @@ const styles = StyleSheet.create({
   avatar: {
     width: 32,
     height: 32,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.primary,
+    borderRadius: 16,
+    backgroundColor: '#D9534F',
     justifyContent: "center",
     alignItems: "center",
-    marginRight: theme.spacing.sm,
+    marginRight: 12,
   },
   avatarText: {
-    ...theme.typography.caption,
-    color: theme.colors.text,
+    color: '#FFFFFF',
     fontWeight: "700",
+    fontSize: 14,
   },
   suggestionText: {
     flex: 1,
   },
   suggestionName: {
-    ...theme.typography.body,
-    color: theme.colors.text,
+    color: '#FFFFFF',
     fontWeight: "600",
+    fontSize: 14,
   },
   suggestionUsername: {
-    ...theme.typography.caption,
-    color: theme.colors.textMuted,
+    color: '#666666',
+    fontSize: 12,
   },
   hashtagIcon: {
-    ...theme.typography.body,
-    color: theme.colors.secondary,
+    color: '#D9534F',
     fontWeight: "700",
-    marginRight: theme.spacing.sm,
+    marginRight: 12,
     fontSize: 18,
   },
   suggestionHashtag: {
-    ...theme.typography.body,
-    color: theme.colors.text,
+    color: '#FFFFFF',
     fontWeight: "600",
+    fontSize: 14,
   },
 });
 

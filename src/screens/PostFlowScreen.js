@@ -5,10 +5,10 @@ import CustomPhotoPicker from '../components/CustomPhotoPicker';
 const PostFlowScreen = ({ navigation }) => {
   const [showPhotoPicker, setShowPhotoPicker] = useState(true);
 
-  const handleImageSelected = (imageUri) => {
+  const handleImageSelected = (asset) => {
     setShowPhotoPicker(false);
-    // Navigate to PostFitScreen with the selected image
-    navigation.replace('PostFit', { selectedImage: imageUri });
+    // Navigate to PostFitScreen with the selected asset object
+    navigation.replace('PostFit', { selectedImage: asset });
   };
 
   const handleClose = () => {

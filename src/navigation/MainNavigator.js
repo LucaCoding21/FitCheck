@@ -286,10 +286,10 @@ function MainTabs({ route, navigation }) {
   const selectedGroup = route?.params?.selectedGroup;
   const [showPhotoPicker, setShowPhotoPicker] = useState(false);
   
-  const handleImageSelected = (imageUri) => {
+  const handleImageSelected = (asset) => {
     setShowPhotoPicker(false);
-    // Navigate to PostFitScreen with the selected image
-    navigation.navigate('PostFit', { selectedImage: imageUri });
+    // Navigate to PostFitScreen with the selected asset object
+    navigation.navigate('PostFit', { selectedImage: asset });
   };
 
   const handleClosePhotoPicker = () => {

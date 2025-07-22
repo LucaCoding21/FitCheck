@@ -10,6 +10,7 @@ import CommentModal from '../components/CommentModal';
 import NotificationsScreen from './NotificationsScreen';
 import { theme } from '../styles/theme';
 import OptimizedImage from '../components/OptimizedImage';
+import Toast from 'react-native-toast-message';
 
 const { width, height } = Dimensions.get('window');
 
@@ -98,6 +99,27 @@ export default function HomeScreen({ navigation, route }) {
     }
   }, [userGroups, selectedGroup]);
 
+  useEffect(() => {
+    if (route?.params?.showPostToast) {
+      // Show toast and scroll to top
+      Toast.show({
+        type: 'success',
+        text1: 'Your fit has been posted!',
+        position: 'bottom',
+        visibilityTime: 1800,
+        autoHide: true,
+        bottomOffset: 600, // moved up by 100px
+      });
+      // Scroll to top
+      setTimeout(() => {
+        if (flatListRef.current) {
+          flatListRef.current.scrollToOffset({ offset: 0, animated: true });
+        }
+      }, 300);
+      // Remove param so it doesn't show again on back
+      navigation.setParams({ showPostToast: false });
+    }
+  }, [route?.params?.showPostToast]);
 
 
   const fetchUserProfile = async () => {
@@ -513,6 +535,7 @@ export default function HomeScreen({ navigation, route }) {
         comments={selectedComments}
         onCommentAdded={handleCommentAdded}
       />
+      <Toast />
     </View>
   );
 }

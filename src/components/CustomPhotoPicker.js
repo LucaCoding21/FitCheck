@@ -85,7 +85,7 @@ const CustomPhotoPicker = ({ visible, onClose, onImageSelected }) => {
       setLoading(true);
       const albums = await MediaLibrary.getAlbumsAsync();
       
-      console.log('Available albums:', albums.map(a => ({ title: a.title, id: a.id, count: a.assetCount })));
+
       
       // Find the "All Photos" album (this is the main album with all photos)
       const allPhotosAlbum = albums.find(album => 
@@ -180,7 +180,7 @@ const CustomPhotoPicker = ({ visible, onClose, onImageSelected }) => {
       }
       
       const result = await MediaLibrary.getAssetsAsync(options);
-      console.log('Fetched photos:', result.assets.length, 'for album:', selectedAlbum?.title);
+
       
       if (isLoadMore) {
         // Append new photos to existing ones
@@ -208,18 +208,19 @@ const CustomPhotoPicker = ({ visible, onClose, onImageSelected }) => {
   const handleTakePhoto = async () => {
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      
       if (status !== 'granted') {
         return;
       }
 
       const result = await ImagePicker.launchCameraAsync({
         allowsEditing: true,
-        aspect: [3, 4],
+        aspect: [1, 1],
         quality: 0.8,
       });
 
       if (!result.canceled && result.assets[0]) {
-        onImageSelected(result.assets[0].uri);
+        onImageSelected(result.assets[0]); // Pass full asset object
         onClose();
       }
     } catch (error) {
@@ -233,7 +234,7 @@ const CustomPhotoPicker = ({ visible, onClose, onImageSelected }) => {
 
   const handleNext = () => {
     if (selectedPhoto) {
-      onImageSelected(selectedPhoto.uri);
+      onImageSelected(selectedPhoto); // Pass full asset object
       onClose();
     }
   };
@@ -253,7 +254,8 @@ const CustomPhotoPicker = ({ visible, onClose, onImageSelected }) => {
         <TouchableOpacity
           style={styles.photoItem}
           onPress={handleTakePhoto}
-          activeOpacity={0.8}
+          activeOpacity={0.6}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
           <View style={styles.cameraButton}>
             <Ionicons name="camera" size={24} color="#FFFFFF" />
