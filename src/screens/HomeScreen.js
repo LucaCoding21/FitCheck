@@ -1,16 +1,20 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, Alert, StatusBar, Modal, Animated, Dimensions, Animated as RNAnimated, PanGestureHandler, State, ScrollView } from 'react-native';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, Alert, StatusBar, Modal, Animated, Dimensions, Animated as RNAnimated, PanGestureHandler, State, ScrollView, ActivityIndicator } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { collection, query, where, orderBy, onSnapshot, getDocs, doc, getDoc } from 'firebase/firestore';
 
 const AnimatedFlatList = RNAnimated.createAnimatedComponent(FlatList);
 import { db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import FitCard from '../components/FitCard';
+import FitCardSkeleton from '../components/FitCardSkeleton';
 import CommentModal from '../components/CommentModal';
 import NotificationsScreen from './NotificationsScreen';
 import { theme } from '../styles/theme';
 import OptimizedImage from '../components/OptimizedImage';
+import PinnedWinnerCard from '../components/PinnedWinnerCard';
 import Toast from 'react-native-toast-message';
+import { calculateAndSaveAllWinnersForUser } from '../services/DailyWinnerService';
 
 const { width, height } = Dimensions.get('window');
 
@@ -36,6 +40,50 @@ export default function HomeScreen({ navigation, route }) {
   const [selectedFit, setSelectedFit] = useState(null);
   const [selectedComments, setSelectedComments] = useState([]);
 
+  // Pagination state
+  const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMoreFits, setHasMoreFits] = useState(true);
+  const [lastVisibleFit, setLastVisibleFit] = useState(null);
+  const [allFits, setAllFits] = useState([]); // Store all fits for filtering
+  const [displayedFits, setDisplayedFits] = useState([]); // Currently displayed fits
+  const [pageSize] = useState(10); // Number of fits to load per page
+
+  // Cache state
+  const [cachedFits, setCachedFits] = useState([]);
+  const [lastFetchTime, setLastFetchTime] = useState(0);
+  const [cacheKey, setCacheKey] = useState(''); // Based on userGroups and selectedGroup
+
+  // Focus listener state to prevent multiple registrations
+  const focusListenerRegistered = useRef(false);
+  const lastFocusTime = useRef(0);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+
+  // Cache validation functions
+  const generateCacheKey = useCallback(() => {
+    const groupIds = userGroups.map(g => g.id).sort().join(',');
+    return `${groupIds}_${selectedGroup}`;
+  }, [userGroups, selectedGroup]);
+
+  const isCacheValid = useCallback(() => {
+    const currentTime = Date.now();
+    const cacheAge = currentTime - lastFetchTime;
+    const maxCacheAge = 5 * 60 * 1000; // 5 minutes
+    
+    // Check if cache is still fresh and cache key matches
+    return cacheAge < maxCacheAge && cacheKey === generateCacheKey();
+  }, [lastFetchTime, cacheKey, generateCacheKey]);
+
+  const shouldUseCache = useCallback(() => {
+    return cachedFits.length > 0 && isCacheValid();
+  }, [cachedFits.length, isCacheValid]);
+
+  const invalidateCache = useCallback(() => {
+    setCachedFits([]);
+    setLastFetchTime(0);
+    setCacheKey('');
+  }, []);
+
   // FlatList ref for scrolling
   const flatListRef = useRef(null);
 
@@ -58,29 +106,52 @@ export default function HomeScreen({ navigation, route }) {
   };
 
   useEffect(() => {
-    // Entrance animations
+    // Lighter entrance animations for better performance
     Animated.parallel([
       Animated.timing(entranceFadeAnim, {
         toValue: 1,
-        duration: 1000,
+        duration: 300, // Further reduced for better performance
         useNativeDriver: true,
       }),
       Animated.timing(entranceSlideAnim, {
         toValue: 0,
-        duration: 800,
+        duration: 250, // Further reduced for better performance
         useNativeDriver: true,
       }),
       Animated.spring(titleScale, {
         toValue: 1,
-        tension: 50,
-        friction: 7,
+        tension: 100, // Increased for faster animation
+        friction: 4, // Reduced for less damping
         useNativeDriver: true,
       }),
     ]).start();
 
+    // Critical data fetch first
     fetchUserGroups();
-    fetchUserProfile();
-    fetchUnreadNotificationsCount();
+    
+    // Defer non-critical operations with shorter delays
+    const profileTimer = setTimeout(() => {
+      fetchUserProfile();
+    }, 200); // Reduced delay
+    
+    // Defer notification count - much longer delay to prevent blocking
+    const notificationTimer = setTimeout(() => {
+      fetchUnreadNotificationsCount();
+    }, 3000); // Much longer delay to prevent blocking transitions
+    
+    // Defer daily winner calculation - even longer delay to prevent blocking
+    const winnerTimer = setTimeout(() => {
+      if (userGroups.length > 0 && user?.uid) {
+        console.log('🏆 HomeScreen: Triggering daily winner calculation...');
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        calculateAndSaveAllWinnersForUser(yesterday, userGroups, user.uid).then(result => {
+          console.log('🏆 HomeScreen: Winner calculation result:', result);
+        }).catch(error => {
+          console.error('🏆 HomeScreen: Winner calculation error:', error);
+        });
+      }
+    }, 5000); // Long delay to ensure it doesn't block UI
     
     // Initialize countdown
     setCountdownText(calculateTimeUntilMidnight());
@@ -90,36 +161,161 @@ export default function HomeScreen({ navigation, route }) {
       setCountdownText(calculateTimeUntilMidnight());
     }, 60000); // Update every minute
     
-    return () => clearInterval(countdownInterval);
+    return () => {
+      clearInterval(countdownInterval);
+      clearTimeout(profileTimer);
+      clearTimeout(notificationTimer);
+      clearTimeout(winnerTimer);
+    };
   }, []);
 
+  // Enhanced focus listener to handle new posts
   useEffect(() => {
+    if (focusListenerRegistered.current) return;
+    
+    const unsubscribeFocus = navigation.addListener('focus', () => {
+      console.log('🔄 HomeScreen: Focus listener triggered');
+      
+      // Check if we just posted a fit and need to refresh
+      if (global.justPostedFit || global.triggerSkeletonLoading) {
+        console.log('🔄 HomeScreen: New post detected on focus, refreshing...');
+        global.justPostedFit = false;
+        global.triggerSkeletonLoading = false;
+        
+        // Set transitioning flag to show skeleton loading
+        setIsTransitioning(true);
+        
+        // Refresh data after a short delay to ensure smooth transition
+        setTimeout(() => {
+          if (userGroups.length > 0) {
+            setIsTransitioning(false);
+            fetchTodaysFits(false, true);
+          }
+        }, 500);
+      }
+    });
+
+    focusListenerRegistered.current = true;
+    
+    return unsubscribeFocus;
+  }, [navigation, userGroups]);
+
+  useEffect(() => {
+    // Don't do anything during transitions
+    if (isTransitioning) {
+      return;
+    }
+    
     if (userGroups.length > 0) {
-      fetchTodaysFits();
+      // Check if we have valid cached data first - immediate check
+      if (shouldUseCache()) {
+        console.log('Using cached fits data on initial load');
+        // Update all states immediately to prevent loading delay
+        setAllFits(cachedFits);
+        const initialFits = cachedFits.slice(0, pageSize);
+        setDisplayedFits(initialFits);
+        setLastVisibleFit(initialFits[initialFits.length - 1] || null);
+        setHasMoreFits(cachedFits.length > pageSize);
+        setLoading(false); // Ensure loading is false
+      } else {
+        // Only fetch if no valid cache - defer to prevent blocking
+        setTimeout(() => {
+          fetchTodaysFits();
+        }, 100);
+      }
     }
   }, [userGroups, selectedGroup]);
 
+  // Single, clean skeleton loading trigger
   useEffect(() => {
-    if (route?.params?.showPostToast) {
-      // Show toast and scroll to top
-      Toast.show({
-        type: 'success',
-        text1: 'Your fit has been posted!',
-        position: 'bottom',
-        visibilityTime: 1800,
-        autoHide: true,
-        bottomOffset: 600, // moved up by 100px
-      });
-      // Scroll to top
+    if (global.triggerSkeletonLoading) {
+      console.log('🔄 HomeScreen: Starting skeleton loading...');
+      global.triggerSkeletonLoading = false;
+      
+      // Set transitioning flag to show skeleton loading IMMEDIATELY
+      setIsTransitioning(true);
+      
+      // Show skeleton loading for 800ms, then refresh smoothly
       setTimeout(() => {
-        if (flatListRef.current) {
-          flatListRef.current.scrollToOffset({ offset: 0, animated: true });
+        console.log('🔄 HomeScreen: Skeleton loading complete, refreshing data...');
+        setIsTransitioning(false);
+        // Force refresh to show new post
+        if (userGroups.length > 0) {
+          fetchTodaysFits(false, true);
         }
-      }, 300);
-      // Remove param so it doesn't show again on back
-      navigation.setParams({ showPostToast: false });
+      }, 800); // Slightly longer for smoother feel
     }
-  }, [route?.params?.showPostToast]);
+  }, []); // Run on mount and when trigger changes
+
+  // ALSO check for justPostedFit flag immediately with polling
+  useEffect(() => {
+    const checkForNewPost = () => {
+      if (global.justPostedFit || global.triggerSkeletonLoading) {
+        console.log('🔄 HomeScreen: New post detected, showing skeleton immediately');
+        global.justPostedFit = false;
+        global.triggerSkeletonLoading = false;
+        
+        // Set transitioning flag to show skeleton loading IMMEDIATELY
+        setIsTransitioning(true);
+        
+        // Wait for userGroups to be available, then refresh
+        const waitForUserGroups = () => {
+          if (userGroups.length > 0) {
+            console.log('🔄 HomeScreen: UserGroups available, refreshing data...');
+            setIsTransitioning(false);
+            setLoading(true);
+            console.log('🔄 HomeScreen: Calling fetchTodaysFits with forceRefresh=true');
+            fetchTodaysFits(false, true);
+          } else {
+            console.log('🔄 HomeScreen: Waiting for userGroups...');
+            setTimeout(waitForUserGroups, 100);
+          }
+        };
+        
+        // Start waiting after 800ms skeleton time
+        setTimeout(waitForUserGroups, 800);
+      }
+    };
+
+    // Check immediately
+    checkForNewPost();
+    
+    // Poll every 10ms to catch it as fast as possible
+    const interval = setInterval(checkForNewPost, 10);
+    
+    return () => clearInterval(interval);
+  }, [userGroups]); // Run on mount AND when userGroups changes
+
+  // Midnight reset and winner calculation
+  useEffect(() => {
+    const checkForMidnightReset = () => {
+      const now = new Date();
+      if (now.getHours() === 0 && now.getMinutes() === 0) {
+        // It's midnight - calculate yesterday's winners
+        if (userGroups.length > 0 && user?.uid) {
+          console.log('🕛 Midnight detected - triggering winner calculation...');
+          const yesterday = new Date();
+          yesterday.setDate(yesterday.getDate() - 1);
+          calculateAndSaveAllWinnersForUser(yesterday, userGroups, user.uid).then(result => {
+            console.log('🏆 Midnight winner calculation result:', result);
+            // Invalidate cache to refresh the feed
+            invalidateCache();
+            // Refresh the feed to show new day
+            fetchTodaysFits(false, true);
+          }).catch(error => {
+            console.error('❌ Midnight winner calculation error:', error);
+          });
+        }
+      }
+    };
+    
+    // Check every minute for midnight
+    const interval = setInterval(checkForMidnightReset, 60000);
+    return () => clearInterval(interval);
+  }, [userGroups, user?.uid]);
+
+  // Remove the complex toast and scroll handling that was causing lag
+  // The toast is now handled directly in PostFitScreen
 
 
   const fetchUserProfile = async () => {
@@ -138,48 +334,43 @@ export default function HomeScreen({ navigation, route }) {
     if (!user) return;
 
     try {
-      // Get all fits by the current user
+      // Get user's read notifications from their profile first
+      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      const userData = userDoc.data();
+      const readNotificationIds = userData?.readNotificationIds || [];
+
+      // Get all fits by the current user with one-time query
       const userFitsQuery = query(
         collection(db, 'fits'),
         where('userId', '==', user.uid),
         orderBy('createdAt', 'desc')
       );
 
-      const unsubscribe = onSnapshot(userFitsQuery, async (snapshot) => {
-        const userFits = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
+      const snapshot = await getDocs(userFitsQuery);
+      const userFits = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
 
-        // Get user's read notifications from their profile
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        const userData = userDoc.data();
-        const readNotificationIds = userData?.readNotificationIds || [];
-
-        // Count unread notifications
-        let unreadCount = 0;
-        
-        for (const fit of userFits) {
-          if (fit.comments && Array.isArray(fit.comments)) {
-            // Filter out comments by the user themselves and count unread ones
-            const otherComments = fit.comments.filter(comment => 
-              comment.userId !== user.uid
-            );
+      // Count unread notifications more efficiently
+      let unreadCount = 0;
+      
+      for (const fit of userFits) {
+        if (fit.comments && Array.isArray(fit.comments)) {
+          // Count comments by others that haven't been read
+          const unreadComments = fit.comments.filter(comment => {
+            if (comment.userId === user.uid) return false; // Skip own comments
             
-            // Count comments that haven't been read
-            const unreadComments = otherComments.filter(comment => {
-              const notificationId = `${fit.id}_${comment.userId}_${comment.timestamp?.toDate?.()?.getTime() || comment.timestamp}`;
-              return !readNotificationIds.includes(notificationId);
-            });
-            
-            unreadCount += unreadComments.length;
-          }
+            const notificationId = `${fit.id}_${comment.userId}_${comment.timestamp?.toDate?.()?.getTime() || comment.timestamp}`;
+            return !readNotificationIds.includes(notificationId);
+          });
+          
+          unreadCount += unreadComments.length;
         }
+      }
 
-        setUnreadNotificationsCount(unreadCount);
-      });
+      setUnreadNotificationsCount(unreadCount);
 
-      return unsubscribe;
     } catch (error) {
       console.error('Error fetching unread notifications count:', error);
     }
@@ -199,51 +390,119 @@ export default function HomeScreen({ navigation, route }) {
     }
   };
 
-  const fetchTodaysFits = async () => {
-    if (userGroups.length === 0) return;
+  const fetchTodaysFits = async (loadMore = false, forceRefresh = false) => {
+    console.log(`🔄 HomeScreen: fetchTodaysFits called - loadMore: ${loadMore}, forceRefresh: ${forceRefresh}`);
+    
+    if (userGroups.length === 0) {
+      console.log('🔄 HomeScreen: No userGroups available, returning early');
+      return;
+    }
+
+    // Check cache first (unless force refresh or loading more)
+    if (!forceRefresh && !loadMore && shouldUseCache()) {
+      console.log('🔄 HomeScreen: Using cached fits data');
+      setAllFits(cachedFits);
+      const initialFits = cachedFits.slice(0, pageSize);
+      setDisplayedFits(initialFits);
+      setLastVisibleFit(initialFits[initialFits.length - 1] || null);
+      setHasMoreFits(cachedFits.length > pageSize);
+      return;
+    }
 
     try {
+      if (loadMore) {
+        setLoadingMore(true);
+      } else {
+        setLoading(true);
+        setAllFits([]);
+        setDisplayedFits([]);
+        setLastVisibleFit(null);
+        setHasMoreFits(true);
+      }
+
       // Get all group IDs the user belongs to
       const userGroupIds = userGroups.map(group => group.id);
       
-      // Fetch fits that have any of the user's group IDs in their groupIds array
+      // Create today's date range for server-side filtering
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      
+      // Use one-time query with server-side date filtering instead of onSnapshot
       const fitsQuery = query(
         collection(db, 'fits'),
-        where('groupIds', 'array-contains-any', userGroupIds)
+        where('groupIds', 'array-contains-any', userGroupIds),
+        where('createdAt', '>=', today),
+        where('createdAt', '<', tomorrow),
+        orderBy('createdAt', 'desc')
       );
       
-      const unsubscribe = onSnapshot(fitsQuery, (snapshot) => {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        
-        let fitsData = snapshot.docs
-          .map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          }))
-          .filter(fit => {
-            // Filter for today's fits on the client side
-            const fitDate = fit.createdAt?.toDate();
-            return fitDate && fitDate >= today;
-          })
-          .sort((a, b) => b.createdAt?.toDate() - a.createdAt?.toDate()); // Sort by newest first
+      const snapshot = await getDocs(fitsQuery);
+      console.log(`🔄 HomeScreen: Fetched ${snapshot.docs.length} fits from Firestore`);
+      
+      let fitsData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
 
-        // Apply group filter if needed
-        if (selectedGroup !== 'all') {
-          fitsData = fitsData.filter(fit => 
-            fit.groupIds && fit.groupIds.includes(selectedGroup)
-          );
+      // Apply group filter if needed
+      if (selectedGroup !== 'all') {
+        fitsData = fitsData.filter(fit => 
+          fit.groupIds && fit.groupIds.includes(selectedGroup)
+        );
+      }
+
+      // Update cache
+      setCachedFits(fitsData);
+      setLastFetchTime(Date.now());
+      setCacheKey(generateCacheKey());
+
+      // Update all fits for filtering
+      setAllFits(fitsData);
+      
+      // Handle pagination
+      if (loadMore) {
+        // Load more fits
+        const startIndex = displayedFits.length;
+        const endIndex = startIndex + pageSize;
+        const newFits = fitsData.slice(startIndex, endIndex);
+        
+        if (newFits.length > 0) {
+          setDisplayedFits(prev => [...prev, ...newFits]);
+          setLastVisibleFit(newFits[newFits.length - 1]);
+          setHasMoreFits(endIndex < fitsData.length);
+        } else {
+          setHasMoreFits(false);
         }
+      } else {
+        // Initial load
+        const initialFits = fitsData.slice(0, pageSize);
+        console.log(`🔄 HomeScreen: Setting ${initialFits.length} fits to displayedFits`);
+        setDisplayedFits(initialFits);
+        setLastVisibleFit(initialFits[initialFits.length - 1] || null);
+        setHasMoreFits(fitsData.length > pageSize);
         
-
-        
-        setFits(fitsData);
+        // Scroll to top if this was a force refresh (new post)
+        if (forceRefresh && flatListRef.current) {
+          setTimeout(() => {
+            flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+          }, 100);
+        }
+      }
+      
+      setLoading(false);
+      setLoadingMore(false);
+      
+      // Defer stats calculation to avoid blocking UI - much longer delay
+      setTimeout(() => {
         calculateStats(fitsData);
-      });
+      }, 2000); // Increased delay to prevent UI blocking
 
-      return unsubscribe;
     } catch (error) {
-      console.error('Error fetching fits:', error);
+      console.error("Error fetching fits:", error);
+      setLoading(false);
+      setLoadingMore(false);
     }
   };
 
@@ -293,6 +552,13 @@ export default function HomeScreen({ navigation, route }) {
     // Handle both string IDs and group objects
     const groupId = typeof group === 'string' ? group : group.id;
     setSelectedGroup(groupId);
+    invalidateCache(); // Invalidate cache when group changes
+  };
+
+  const loadMoreFits = () => {
+    if (!loadingMore && hasMoreFits) {
+      fetchTodaysFits(true);
+    }
   };
 
   const handleAddGroup = () => {
@@ -348,6 +614,13 @@ export default function HomeScreen({ navigation, route }) {
     }
   };
 
+  const handlePinnedWinnerPress = useCallback(() => {
+    // Navigate to FitDetailsScreen with the winner's fit
+    // This will be handled by the PinnedWinnerCard component
+  }, []);
+
+
+
   const renderGroupButton = (group, isSelected, key) => {
     const isAllGroup = group === 'all';
     const isAddButton = group === 'add';
@@ -375,15 +648,42 @@ export default function HomeScreen({ navigation, route }) {
         onPress={() => handleGroupSelect(group)}
         activeOpacity={0.8}
       >
-        <Text style={[
-          styles.groupButtonText,
-          isSelected && styles.groupButtonTextSelected
-        ]}>
-          {isAllGroup ? 'All' : (typeof group === 'string' ? group : group.name)}
-        </Text>
+        <View style={styles.groupButtonContent}>
+          <Text style={[
+            styles.groupButtonText,
+            isSelected && styles.groupButtonTextSelected
+          ]}>
+            {isAllGroup ? 'All' : (typeof group === 'string' ? group : group.name)}
+          </Text>
+          {/* Streak Badge */}
+          {!isAllGroup && group.streak > 0 && (
+            <View style={[
+              styles.streakBadge,
+              isSelected && styles.streakBadgeSelected
+            ]}>
+              <Ionicons name="flame" size={12} color={isSelected ? "#FFFFFF" : "#FF6B35"} />
+              <Text style={[
+                styles.streakCount,
+                isSelected && styles.streakCountSelected
+              ]}>
+                {group.streak}
+              </Text>
+            </View>
+          )}
+        </View>
       </TouchableOpacity>
     );
   };
+
+  // Memoize the PinnedWinnerCard component to prevent unnecessary re-renders
+  const memoizedPinnedWinnerCard = useMemo(() => (
+    <PinnedWinnerCard 
+      key={`winner-${selectedGroup}`}
+      onPress={handlePinnedWinnerPress}
+      navigation={navigation}
+      selectedGroup={selectedGroup}
+    />
+  ), [selectedGroup]); // Only depend on selectedGroup, not navigation // Re-create when navigation or selectedGroup changes
 
   return (
     <View style={styles.container}>
@@ -485,37 +785,63 @@ export default function HomeScreen({ navigation, route }) {
               </View>
             </TouchableOpacity>
           </View>
-        ) : fits.length === 0 ? (
-          <View style={styles.emptyState}>
-            <View style={styles.emptyIcon}>
-              <OptimizedImage 
-                source={require('../../assets/starman-whitelegs.png')} 
-                style={styles.emptyIconImage}
-                showLoadingIndicator={false}
-              />
-            </View>
-            <Text style={styles.emptyTitle}>No Fits Today</Text>
-            <Text style={styles.emptyText}>
-              Be the first to drop your fit and start the daily feed
-            </Text>
-          </View>
         ) : (
-                      <AnimatedFlatList
-            ref={flatListRef}
-            data={fits}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <FitCard 
-                fit={item} 
-                onCommentSectionOpen={handleCommentSectionOpen}
-                onOpenCommentModal={handleOpenCommentModal}
+          <>
+            {isTransitioning || global.justPostedFit || global.triggerSkeletonLoading || (loading && displayedFits.length === 0) ? (
+              // Show skeleton loading when transitioning OR when flags are set OR when loading with no data
+              <View style={styles.skeletonContainer}>
+                <FitCardSkeleton />
+                <FitCardSkeleton />
+                <FitCardSkeleton />
+              </View>
+            ) : displayedFits.length === 0 ? (
+              <View style={styles.emptyState}>
+                <View style={styles.emptyIcon}>
+                  <OptimizedImage 
+                    source={require('../../assets/starman-whitelegs.png')} 
+                    style={styles.emptyIconImage}
+                    showLoadingIndicator={false}
+                  />
+                </View>
+                <Text style={styles.emptyTitle}>No Fits Today</Text>
+                <Text style={styles.emptyText}>
+                  Be the first to drop your fit and start the daily feed
+                </Text>
+              </View>
+            ) : (
+              <AnimatedFlatList
+                ref={flatListRef}
+                data={displayedFits}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item, index }) => {
+                  if (isTransitioning) {
+                    console.log('🔄 HomeScreen: Rendering skeleton for index:', index);
+                    return <FitCardSkeleton />;
+                  } else {
+                    return (
+                      <FitCard 
+                        fit={item} 
+                        onCommentSectionOpen={handleCommentSectionOpen}
+                        onOpenCommentModal={handleOpenCommentModal}
+                      />
+                    );
+                  }
+                }}
+                ListHeaderComponent={memoizedPinnedWinnerCard}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.feedContainer}
+                style={{ flex: 1 }}
+                keyboardShouldPersistTaps="handled"
+                onEndReached={loadMoreFits}
+                onEndReachedThreshold={0.5}
+                ListFooterComponent={() => loadingMore ? (
+                  <View style={styles.loadingMoreContainer}>
+                    <ActivityIndicator size="small" color="#B5483D" />
+                  </View>
+                ) : null}
               />
             )}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.feedContainer}
-            style={{ flex: 1 }}
-            keyboardShouldPersistTaps="handled"
-          />
+          </>
         )}
       </Animated.View>
 
@@ -574,6 +900,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+
   notificationButton: {
     width: 30,
     height: 30,
@@ -629,6 +956,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
 
+
   // Groups section
   groupsSection: {
     marginBottom: 8,
@@ -649,7 +977,7 @@ const styles = StyleSheet.create({
   },
   groupButton: {
     backgroundColor: '#2A2A2A',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 20,
     marginRight: 12,
@@ -660,6 +988,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#7b362f',
     borderColor: '#b5493e',
   },
+  groupButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   groupButtonText: {
     fontSize: 14,
     color: '#FFFFFF',
@@ -667,6 +1000,26 @@ const styles = StyleSheet.create({
   },
   groupButtonTextSelected: {
     fontWeight: '600',
+  },
+  streakBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 107, 53, 0.15)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+    gap: 2,
+  },
+  streakBadgeSelected: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  streakCount: {
+    fontSize: 11,
+    color: '#FF6B35',
+    fontWeight: '600',
+  },
+  streakCountSelected: {
+    color: '#FFFFFF',
   },
   addGroupButton: {
     width: 32,
@@ -756,5 +1109,25 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
     letterSpacing: 0.5,
+  },
+  loadingMoreContainer: {
+    paddingVertical: 20,
+    alignItems: 'center',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 50,
+  },
+  loadingText: {
+    marginTop: 10,
+    color: '#CCCCCC',
+    fontSize: 16,
+  },
+  skeletonContainer: {
+    flex: 1,
+    paddingTop: 7,
+    paddingBottom: 100,
   },
 });

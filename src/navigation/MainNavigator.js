@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, ActivityIndicator, StyleSheet, Text, TouchableOpacity, Animated, Image } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Text, TouchableOpacity, Animated, Image, Dimensions } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useFocusEffect } from '@react-navigation/native';
@@ -17,9 +17,11 @@ import NoGroupsScreen from '../screens/NoGroupsScreen';
 import FitDetailsScreen from '../screens/FitDetailsScreen';
 import ProfileSetupScreen from '../screens/ProfileSetupScreen';
 import GroupDetailsScreen from '../screens/GroupDetailsScreen';
+import HallOfFlameScreen from '../screens/HallOfFlameScreen';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
+const { width } = Dimensions.get('window');
 
 // Modern Tab Bar Component
 function CustomTabBar({ state, descriptors, navigation, setShowPhotoPicker }) {
@@ -127,6 +129,10 @@ function CustomTabBar({ state, descriptors, navigation, setShowPhotoPicker }) {
               <TouchableOpacity
                 key={route.key}
                 onPress={() => {
+                  // Navigate to Home tab in the background immediately when (+) is clicked
+                  // This ensures user is on Home tab behind the PhotoPicker overlay
+                  navigation.navigate('MainTabs', { screen: 'Home' });
+                  
                   // Open photo picker directly
                   setShowPhotoPicker(true);
                 }}
@@ -285,15 +291,39 @@ function CustomTabBar({ state, descriptors, navigation, setShowPhotoPicker }) {
 function MainTabs({ route, navigation }) {
   const selectedGroup = route?.params?.selectedGroup;
   const [showPhotoPicker, setShowPhotoPicker] = useState(false);
+  const [showPostFit, setShowPostFit] = useState(false);
+  const [selectedImage, setSelectedImage] = useState(null);
   
   const handleImageSelected = (asset) => {
-    setShowPhotoPicker(false);
-    // Navigate to PostFitScreen with the selected asset object
-    navigation.navigate('PostFit', { selectedImage: asset });
+    setSelectedImage(asset);
+    
+    // Navigate to Home tab in the background immediately when photo is selected
+    // This ensures user is on Home tab behind the PostFitScreen overlay
+    navigation.navigate('MainTabs', { screen: 'Home' });
+    
+    // Start smooth transition: PhotoPicker slides out, PostFit slides in
+    // Show PostFit immediately while PhotoPicker is still visible
+    setShowPostFit(true);
+    // Close PhotoPicker after a tiny delay to allow PostFit to start animating
+    setTimeout(() => {
+      setShowPhotoPicker(false);
+    }, 5); // Even faster transition
   };
 
   const handleClosePhotoPicker = () => {
     setShowPhotoPicker(false);
+  };
+  
+  const handleClosePostFit = () => {
+    setShowPostFit(false);
+    setSelectedImage(null);
+  };
+  
+  const handlePostSuccess = () => {
+    setShowPostFit(false);
+    setSelectedImage(null);
+    // Navigate back to MainTabs and ensure we're on Home tab
+    navigation.navigate('MainTabs');
   };
   
   return (
@@ -326,11 +356,25 @@ function MainTabs({ route, navigation }) {
         <Tab.Screen name="Profile" component={ProfileScreen} />
       </Tab.Navigator>
       
-      <CustomPhotoPicker
-        visible={showPhotoPicker}
-        onClose={handleClosePhotoPicker}
-        onImageSelected={handleImageSelected}
-      />
+      {/* PhotoPicker Overlay */}
+      {showPhotoPicker && (
+        <CustomPhotoPicker
+          visible={showPhotoPicker}
+          onClose={handleClosePhotoPicker}
+          onImageSelected={handleImageSelected}
+        />
+      )}
+      
+      {/* PostFitScreen Overlay */}
+      {showPostFit && selectedImage && (
+        <PostFitScreen
+          navigation={{
+            ...navigation,
+            goBack: handleClosePostFit
+          }}
+          route={{ params: { selectedImage } }}
+        />
+      )}
     </>
   );
 }
@@ -443,9 +487,16 @@ function MainNavigator({ route }) {
         <>
           <Stack.Screen name="NoGroups" component={NoGroupsScreen} />
           <Stack.Screen name="Groups" component={GroupScreen} />
-          <Stack.Screen name="GroupDetails" component={GroupDetailsScreen} />
+          <Stack.Screen 
+            name="GroupDetails" 
+            component={GroupDetailsScreen}
+            options={{
+              gestureDirection: 'horizontal-inverted',
+            }}
+          />
           <Stack.Screen name="Profile" component={ProfileScreen} />
           <Stack.Screen name="FitDetails" component={FitDetailsScreen} />
+          <Stack.Screen name="HallOfFlame" component={HallOfFlameScreen} />
         </>
       ) : (
         // Has groups - show MainTabs with tab bar
@@ -455,9 +506,16 @@ function MainNavigator({ route }) {
             component={MainTabs}
             initialParams={{ selectedGroup }}
           />
-          <Stack.Screen name="PostFit" component={PostFitScreen} />
-          <Stack.Screen name="GroupDetails" component={GroupDetailsScreen} />
+
+          <Stack.Screen 
+            name="GroupDetails" 
+            component={GroupDetailsScreen}
+            options={{
+              gestureDirection: 'horizontal-inverted',
+            }}
+          />
           <Stack.Screen name="FitDetails" component={FitDetailsScreen} />
+          <Stack.Screen name="HallOfFlame" component={HallOfFlameScreen} />
         </>
       )}
     </Stack.Navigator>

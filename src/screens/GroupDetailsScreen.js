@@ -102,6 +102,17 @@ export default function GroupDetailsScreen({ navigation, route }) {
   const [editingGroupName, setEditingGroupName] = useState(groupName);
   const [editingGroupImage, setEditingGroupImage] = useState(null);
   
+  // Custom modal state
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmModalConfig, setConfirmModalConfig] = useState({
+    title: '',
+    message: '',
+    confirmText: '',
+    cancelText: '',
+    onConfirm: null,
+    isDestructive: false,
+  });
+  
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
@@ -369,6 +380,15 @@ export default function GroupDetailsScreen({ navigation, route }) {
     });
   };
 
+  const openConfirmModal = (config) => {
+    setConfirmModalConfig(config);
+    setShowConfirmModal(true);
+  };
+
+  const hideConfirmModal = () => {
+    setShowConfirmModal(false);
+  };
+
   const handleEditGroup = () => {
     closeMenu();
     setIsEditMode(true);
@@ -378,148 +398,155 @@ export default function GroupDetailsScreen({ navigation, route }) {
 
   const handleSaveGroup = async () => {
     if (!editingGroupName.trim()) {
-      Alert.alert('Error', 'Group name cannot be empty.');
+      openConfirmModal({
+        title: 'Error',
+        message: 'Group name cannot be empty.',
+        confirmText: 'OK',
+        cancelText: '',
+        onConfirm: () => hideConfirmModal(),
+        isDestructive: false,
+      });
       return;
     }
 
-    Alert.alert(
-      'Save Changes',
-      'Are you sure you want to save these changes?',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Save',
-          onPress: async () => {
+    openConfirmModal({
+      title: 'Save Changes',
+      message: 'Are you sure you want to save these changes?',
+      confirmText: 'Save',
+      cancelText: 'Cancel',
+      onConfirm: async () => {
+        try {
+          setLoading(true);
+          hideConfirmModal();
+          
+          let newGroupImageURL = groupData?.groupImageURL || null;
+          
+          // Upload new image if selected
+          if (editingGroupImage) {
             try {
-              setLoading(true);
-              
-              let newGroupImageURL = groupData?.groupImageURL || null;
-              
-              // Upload new image if selected
-              if (editingGroupImage) {
-                try {
-                  newGroupImageURL = await uploadImageToFirebase(editingGroupImage);
-                } catch (uploadError) {
-                  console.error('Image upload failed:', uploadError);
-                  Alert.alert(
-                    'Image Upload Failed', 
-                    'Your group will be updated without the new image.',
-                    [{ text: 'OK' }]
-                  );
-                }
-              }
-
-              // Update group document
-              await updateDoc(doc(db, 'groups', groupId), {
-                name: editingGroupName.trim(),
-                groupImageURL: newGroupImageURL,
-                updatedAt: new Date(),
+              newGroupImageURL = await uploadImageToFirebase(editingGroupImage);
+            } catch (uploadError) {
+              console.error('Image upload failed:', uploadError);
+              openConfirmModal({
+                title: 'Image Upload Failed',
+                message: 'Your group will be updated without the new image.',
+                confirmText: 'OK',
+                cancelText: '',
+                onConfirm: () => hideConfirmModal(),
+                isDestructive: false,
               });
-
-              // Update local state
-              setGroupData(prev => ({
-                ...prev,
-                name: editingGroupName.trim(),
-                groupImageURL: newGroupImageURL,
-              }));
-              setGroupImage(newGroupImageURL);
-              
-              // Exit edit mode
-              setIsEditMode(false);
-              setEditingGroupImage(null);
-              
-              Toast.show({
-                type: 'success',
-                text1: 'Group updated successfully',
-                position: 'bottom',
-                visibilityTime: 2000,
-                autoHide: true,
-                bottomOffset: 60,
-              });
-              
-            } catch (error) {
-              console.error('Error updating group:', error);
-              Alert.alert('Error', 'Failed to update group. Please try again.');
-            } finally {
-              setLoading(false);
             }
-          },
-        },
-      ]
-    );
+          }
+
+          // Update group document
+          await updateDoc(doc(db, 'groups', groupId), {
+            name: editingGroupName.trim(),
+            groupImageURL: newGroupImageURL,
+            updatedAt: new Date(),
+          });
+
+          // Update local state
+          setGroupData(prev => ({
+            ...prev,
+            name: editingGroupName.trim(),
+            groupImageURL: newGroupImageURL,
+          }));
+          setGroupImage(newGroupImageURL);
+          
+          // Exit edit mode
+          setIsEditMode(false);
+          setEditingGroupImage(null);
+          
+          Toast.show({
+            type: 'success',
+            text1: 'Group updated successfully',
+            position: 'bottom',
+            visibilityTime: 2000,
+            autoHide: true,
+            bottomOffset: 60,
+          });
+          
+        } catch (error) {
+          console.error('Error updating group:', error);
+          openConfirmModal({
+            title: 'Error',
+            message: 'Failed to update group. Please try again.',
+            confirmText: 'OK',
+            cancelText: '',
+            onConfirm: () => hideConfirmModal(),
+            isDestructive: false,
+          });
+        } finally {
+          setLoading(false);
+        }
+      },
+      isDestructive: false,
+    });
   };
 
   const handleCancelEdit = () => {
-    Alert.alert(
-      'Cancel Editing',
-      'Are you sure you want to cancel? Your changes will be lost.',
-      [
-        {
-          text: 'Keep Editing',
-          style: 'cancel',
-        },
-        {
-          text: 'Cancel',
-          style: 'destructive',
-          onPress: () => {
-            setIsEditMode(false);
-            setEditingGroupName(groupData?.name || groupName);
-            setEditingGroupImage(null);
-          },
-        },
-      ]
-    );
+    openConfirmModal({
+      title: 'Cancel Editing',
+      message: 'Are you sure you want to cancel? Your changes will be lost.',
+      confirmText: 'Cancel',
+      cancelText: 'Keep Editing',
+      onConfirm: () => {
+        hideConfirmModal();
+        setIsEditMode(false);
+        setEditingGroupName(groupData?.name || groupName);
+        setEditingGroupImage(null);
+      },
+      isDestructive: true,
+    });
   };
 
   const handleLeaveGroup = async () => {
     closeMenu();
-    Alert.alert(
-      'Leave Group',
-      `Are you sure you want to leave "${groupName}"? You won't be able to see the group's fits anymore.`,
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Leave Group',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              setLoading(true);
-              
-              // Remove user from group's members array
-              await updateDoc(doc(db, 'groups', groupId), {
-                members: arrayRemove(user.uid),
-                memberCount: groupData?.memberCount - 1,
-              });
+    openConfirmModal({
+      title: 'Leave Group',
+      message: `Are you sure you want to leave "${groupName}"? You won't be able to see the group's fits anymore.`,
+      confirmText: 'Leave Group',
+      cancelText: 'Cancel',
+      onConfirm: async () => {
+        try {
+          setLoading(true);
+          hideConfirmModal();
+          
+          // Remove user from group's members array
+          await updateDoc(doc(db, 'groups', groupId), {
+            members: arrayRemove(user.uid),
+            memberCount: groupData?.memberCount - 1,
+          });
 
-              // Remove group from user's groups array
-              const userDoc = await getDoc(doc(db, 'users', user.uid));
-              if (userDoc.exists()) {
-                const userData = userDoc.data();
-                const updatedGroups = userData.groups?.filter(g => g !== groupId) || [];
-                await updateDoc(doc(db, 'users', user.uid), {
-                  groups: updatedGroups,
-                });
-              }
+          // Remove group from user's groups array
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            const updatedGroups = userData.groups?.filter(g => g !== groupId) || [];
+            await updateDoc(doc(db, 'users', user.uid), {
+              groups: updatedGroups,
+            });
+          }
 
-              // Navigate back to Groups screen
-              navigation.replace("MainTabs", { screen: "Groups" });
-              
-            } catch (error) {
-              console.error('Error leaving group:', error);
-              Alert.alert('Error', 'Failed to leave group. Please try again.');
-            } finally {
-              setLoading(false);
-            }
-          },
-        },
-      ]
-    );
+          // Navigate back to Groups screen
+          navigation.replace("MainTabs", { screen: "Groups" });
+          
+        } catch (error) {
+          console.error('Error leaving group:', error);
+          openConfirmModal({
+            title: 'Error',
+            message: 'Failed to leave group. Please try again.',
+            confirmText: 'OK',
+            cancelText: '',
+            onConfirm: () => hideConfirmModal(),
+            isDestructive: false,
+          });
+        } finally {
+          setLoading(false);
+        }
+      },
+      isDestructive: true,
+    });
   };
 
   return (
@@ -574,10 +601,13 @@ export default function GroupDetailsScreen({ navigation, route }) {
             ) : (
               <Text style={styles.headerTitle}>{groupData?.name || groupName}</Text>
             )}
-            <View style={styles.streakContainer}>
-              <Ionicons name="flame" size={16} color={theme.colors.primary} style={styles.streakIcon} />
-              <Text style={styles.streakText}>Streak: {groupData?.streak || 0}</Text>
-            </View>
+            {/* Streak Badge */}
+            {groupData?.streak > 0 && (
+              <View style={styles.streakBadge}>
+                <Ionicons name="flame" size={14} color="#FF6B35" />
+                <Text style={styles.streakCount}>{groupData.streak} day streak</Text>
+              </View>
+            )}
           </View>
           {isEditMode ? (
             <TouchableOpacity
@@ -745,6 +775,63 @@ export default function GroupDetailsScreen({ navigation, route }) {
         )}
         </View>
 
+        {/* Custom Confirmation Modal */}
+        {showConfirmModal && (
+          <Modal
+            visible={showConfirmModal}
+            transparent={true}
+            animationType="fade"
+            onRequestClose={hideConfirmModal}
+          >
+            <TouchableOpacity
+              style={styles.modalBackdrop}
+              activeOpacity={1}
+              onPress={hideConfirmModal}
+            >
+              <TouchableOpacity
+                style={styles.modalContainer}
+                activeOpacity={1}
+                onPress={() => {}}
+              >
+                <View style={styles.modalContent}>
+                  <Text style={styles.modalTitle}>{confirmModalConfig.title}</Text>
+                  <Text style={styles.modalMessage}>{confirmModalConfig.message}</Text>
+                  
+                  <View style={styles.modalButtons}>
+                    {confirmModalConfig.cancelText && (
+                      <TouchableOpacity
+                        style={styles.modalButtonSecondary}
+                        onPress={hideConfirmModal}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.modalButtonSecondaryText}>
+                          {confirmModalConfig.cancelText}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                    
+                    <TouchableOpacity
+                      style={[
+                        styles.modalButtonPrimary,
+                        confirmModalConfig.isDestructive && styles.modalButtonDestructive
+                      ]}
+                      onPress={confirmModalConfig.onConfirm}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[
+                        styles.modalButtonPrimaryText,
+                        confirmModalConfig.isDestructive && styles.modalButtonDestructiveText
+                      ]}>
+                        {confirmModalConfig.confirmText}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            </TouchableOpacity>
+          </Modal>
+        )}
+
       </SafeAreaView>
       <Toast config={toastConfig} />
     </>
@@ -791,9 +878,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 4,
+    position: 'relative',
     minWidth: 200,
   },
-    editableTitle: {
+  editableTitle: {
     fontSize: 24,
     fontWeight: '700',
     color: theme.colors.text,
@@ -802,8 +890,9 @@ const styles = StyleSheet.create({
     minWidth: 200,
   },
   clearButton: {
+    position: 'absolute',
+    right: -10,
     padding: 8,
-    marginLeft: 8,
   },
   saveButton: {
     backgroundColor: theme.colors.primary,
@@ -824,17 +913,19 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.5,
   },
-  streakContainer: {
+  streakBadge: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: 'rgba(255, 107, 53, 0.15)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 16,
+    gap: 4,
   },
-  streakIcon: {
-    marginRight: 4,
-  },
-  streakText: {
-    fontSize: 16,
-    color: theme.colors.text,
-    fontWeight: '500',
+  streakCount: {
+    fontSize: 13,
+    color: '#FF6B35',
+    fontWeight: '600',
   },
   menuButton: {
     width: 44,
@@ -961,42 +1052,46 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     zIndex: 999,
+    backgroundColor: 'transparent',
   },
   menuOverlay: {
     position: 'absolute',
     top: 50,
-    right: 20,
+    right: 16,
     zIndex: 1000,
   },
   menuContainer: {
     backgroundColor: theme.colors.surface,
-    borderRadius: theme.borderRadius.md,
-    padding: 4,
-    minWidth: 160,
+    borderRadius: 12,
+    padding: 8,
+    minWidth: 140,
+    maxWidth: 180,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     width: '100%',
-    paddingVertical: 8,
+    paddingVertical: 10,
     paddingHorizontal: 12,
-    borderRadius: theme.borderRadius.sm,
+    borderRadius: 8,
   },
   menuItemText: {
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 15,
+    fontWeight: '600',
     color: theme.colors.text,
     flex: 1,
   },
   menuItemTextDanger: {
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 15,
+    fontWeight: '600',
     color: theme.colors.error,
     flex: 1,
   },
@@ -1028,5 +1123,94 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     marginLeft: 6,
+  },
+  // Custom Modal Styles
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  modalContainer: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 320,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  modalContent: {
+    alignItems: 'center',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: theme.colors.text,
+    textAlign: 'center',
+    marginBottom: 12,
+    letterSpacing: -0.5,
+  },
+  modalMessage: {
+    fontSize: 16,
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  modalButtonSecondary: {
+    flex: 1,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  modalButtonSecondaryText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.colors.text,
+  },
+  modalButtonPrimary: {
+    flex: 1,
+    backgroundColor: theme.colors.primary,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+    shadowColor: theme.colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  modalButtonPrimaryText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: theme.colors.text,
+  },
+  modalButtonDestructive: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: theme.colors.error,
+    shadowColor: 'transparent',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
+  },
+  modalButtonDestructiveText: {
+    color: theme.colors.error,
   },
 }); 

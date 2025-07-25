@@ -29,6 +29,7 @@
     "expo-notifications": "^0.31.4",
     "expo-status-bar": "~2.2.3",
     "firebase": "^11.10.0",
+    "ionicons": "^8.0.13",
     "react": "19.0.0",
     "react-native": "0.79.5",
     "react-native-dotenv": "^3.4.11",

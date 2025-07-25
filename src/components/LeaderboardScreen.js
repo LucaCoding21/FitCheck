@@ -10,17 +10,19 @@ import {
   ScrollView,
   Modal,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { collection, query, where, orderBy, getDocs, getDoc, doc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { theme } from '../styles/theme';
 import OptimizedImage from './OptimizedImage';
+import { formatRating } from '../utils/ratingUtils';
 
 // Helper function to calculate display rating with fallback
 const calculateDisplayRating = (fit) => {
   // If fairRating exists and is not 0, use it
   if (fit.fairRating && fit.fairRating > 0) {
-    return fit.fairRating.toFixed(1);
+    return formatRating(fit.fairRating);
   }
   
   // Fallback: calculate from ratings object
@@ -31,11 +33,11 @@ const calculateDisplayRating = (fit) => {
     
     if (ratings.length > 0) {
       const average = ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length;
-      return Math.round(average * 10) / 10;
+      return formatRating(Math.round(average * 10) / 10);
     }
   }
   
-  return '0.0';
+  return '0';
 };
 
 // Helper function to calculate dynamic rating threshold based on group size
@@ -510,13 +512,15 @@ export default function LeaderboardScreen({ navigation, route }) {
       >
         <View style={styles.headerTop}>
           <Text style={styles.title}>Daily Leaderboard</Text>
-          <TouchableOpacity
-            style={styles.infoButton}
-            onPress={() => setShowInfoModal(true)}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.infoButtonText}>?</Text>
-          </TouchableOpacity>
+          <View style={styles.headerButtons}>
+            <TouchableOpacity
+              style={styles.infoButton}
+              onPress={() => setShowInfoModal(true)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.infoButtonText}>?</Text>
+            </TouchableOpacity>
+          </View>
         </View>
         <Text style={styles.subtitle}>
           Feed resets in <Text style={styles.countdownTime}>{countdownText}</Text>
@@ -890,6 +894,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   infoButton: {
     width: 32,

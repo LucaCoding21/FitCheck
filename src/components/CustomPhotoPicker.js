@@ -234,8 +234,8 @@ const CustomPhotoPicker = ({ visible, onClose, onImageSelected }) => {
 
   const handleNext = () => {
     if (selectedPhoto) {
-      onImageSelected(selectedPhoto); // Pass full asset object
-      onClose();
+      // Immediate transition without pre-loading
+      onImageSelected(selectedPhoto);
     }
   };
 

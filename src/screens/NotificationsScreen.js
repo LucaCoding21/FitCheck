@@ -9,11 +9,13 @@ import {
   Dimensions,
   StatusBar,
 } from 'react-native';
+import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import { collection, query, where, orderBy, onSnapshot, getDocs, doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import OptimizedImage from '../components/OptimizedImage';
-// import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
+import { theme } from '../styles/theme';
 
 const { width, height } = Dimensions.get('window');
 
@@ -170,9 +172,33 @@ export default function NotificationsScreen({ isVisible, onClose, onNavigateToFi
     }
   };
 
-  // Gesture event removed for now
+  // Swipe gesture functionality
+  const onGestureEvent = Animated.event(
+    [{ nativeEvent: { translationX: slideAnim } }],
+    { useNativeDriver: true }
+  );
 
-  // Swipe gesture functionality removed for now - can be re-implemented later
+  const onHandlerStateChange = (event) => {
+    if (event.nativeEvent.state === State.END) {
+      const { translationX } = event.nativeEvent;
+      
+      if (translationX > width * 0.3) {
+        // Swipe right - close notifications
+        hideNotifications();
+      } else {
+        // Snap back to original position
+        Animated.spring(slideAnim, {
+          toValue: 0,
+          useNativeDriver: true,
+        }).start();
+      }
+    }
+  };
+
+  // Simple touch-based close functionality
+  const handleBackdropPress = () => {
+    hideNotifications();
+  };
 
   const formatTimeAgo = (date) => {
     if (!date) return "Just now";
@@ -243,7 +269,7 @@ export default function NotificationsScreen({ isVisible, onClose, onNavigateToFi
   const renderEmptyState = () => (
     <View style={styles.emptyState}>
       <View style={styles.emptyIcon}>
-        <Text style={styles.emptyIconText}>🔔</Text>
+        <Ionicons name="notifications-outline" size={32} color={theme.colors.textSecondary} />
       </View>
       <Text style={styles.emptyTitle}>No notifications yet</Text>
       <Text style={styles.emptyText}>
@@ -267,21 +293,25 @@ export default function NotificationsScreen({ isVisible, onClose, onNavigateToFi
       >
         <TouchableOpacity 
           style={styles.backdropTouchable}
-          onPress={hideNotifications}
+          onPress={handleBackdropPress}
           activeOpacity={1}
         />
       </Animated.View>
 
       {/* Notifications Panel */}
-      <Animated.View
-        style={[
-          styles.notificationsPanel,
-          {
-            transform: [{ translateX: slideAnim }],
-            opacity: fadeAnim,
-          },
-        ]}
+      <PanGestureHandler
+        onGestureEvent={onGestureEvent}
+        onHandlerStateChange={onHandlerStateChange}
       >
+        <Animated.View
+          style={[
+            styles.notificationsPanel,
+            {
+              transform: [{ translateX: slideAnim }],
+              opacity: fadeAnim,
+            },
+          ]}
+        >
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Notifications</Text>
@@ -312,7 +342,8 @@ export default function NotificationsScreen({ isVisible, onClose, onNavigateToFi
             />
           )}
         </View>
-      </Animated.View>
+        </Animated.View>
+      </PanGestureHandler>
     </View>
   );
 }
@@ -343,7 +374,7 @@ const styles = StyleSheet.create({
     right: 0,
     width: '100%',
     height: '100%',
-    backgroundColor: '#121212',
+    backgroundColor: theme.colors.background,
   },
   header: {
     flexDirection: 'row',
@@ -353,26 +384,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#2A2A2A',
+    borderBottomColor: theme.colors.border,
   },
   headerTitle: {
     fontSize: 24,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    letterSpacing: 0.5,
+    fontWeight: '700',
+    color: theme.colors.text,
+    letterSpacing: -0.5,
   },
   closeButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#2A2A2A',
+    backgroundColor: theme.colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   closeButtonText: {
     fontSize: 18,
-    color: '#FFFFFF',
-    fontWeight: 'bold',
+    color: theme.colors.text,
+    fontWeight: '700',
   },
   content: {
     flex: 1,
@@ -384,7 +417,7 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 16,
-    color: '#71717A',
+    color: theme.colors.textSecondary,
   },
   listContainer: {
     paddingVertical: 10,
@@ -393,7 +426,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#2A2A2A',
+    borderBottomColor: theme.colors.border,
   },
   notificationContent: {
     flexDirection: 'row',
@@ -408,7 +441,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#6366F1',
+    backgroundColor: theme.colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -421,7 +454,7 @@ const styles = StyleSheet.create({
   },
   avatarText: {
     fontSize: 16,
-    color: '#FFFFFF',
+    color: theme.colors.text,
     fontWeight: '700',
   },
   textContent: {
@@ -430,18 +463,18 @@ const styles = StyleSheet.create({
   username: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: theme.colors.text,
     marginBottom: 4,
   },
   commentText: {
     fontSize: 14,
-    color: '#E5E5E5',
+    color: theme.colors.textSecondary,
     lineHeight: 18,
     marginBottom: 4,
   },
   timestamp: {
     fontSize: 12,
-    color: '#71717A',
+    color: theme.colors.textSecondary,
   },
   fitPreview: {
     width: 50,
@@ -464,25 +497,23 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: '#2A2A2A',
+    backgroundColor: theme.colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 24,
-  },
-  emptyIconText: {
-    fontSize: 36,
-    color: '#666666',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   emptyTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: theme.colors.text,
     textAlign: 'center',
     marginBottom: 8,
   },
   emptyText: {
     fontSize: 14,
-    color: '#71717A',
+    color: theme.colors.textSecondary,
     textAlign: 'center',
     lineHeight: 20,
   },

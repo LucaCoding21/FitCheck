@@ -7,9 +7,14 @@ import {
   StyleSheet,
   FlatList,
   Animated,
+  Dimensions,
+  Modal,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { theme } from "../styles/theme";
+import { Ionicons } from '@expo/vector-icons';
+
+const { width, height } = Dimensions.get('window');
 
 const CaptionInput = ({
   value,
@@ -27,9 +32,11 @@ const CaptionInput = ({
   const [suggestionType, setSuggestionType] = useState(null); // 'mention' or 'hashtag'
   const [cursorPosition, setCursorPosition] = useState(0);
   const [currentQuery, setCurrentQuery] = useState("");
+  const [isFocused, setIsFocused] = useState(false);
 
   const textInputRef = useRef(null);
   const suggestionHeight = useRef(new Animated.Value(0)).current;
+  const modalAnim = useRef(new Animated.Value(0)).current;
 
   // Parse text for mentions and hashtags
   const parseText = (text) => {
@@ -126,6 +133,25 @@ const CaptionInput = ({
     });
   };
 
+  // Handle focus/blur for modal
+  const handleFocus = () => {
+    setIsFocused(true);
+    Animated.timing(modalAnim, {
+      toValue: 1,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handleBlur = () => {
+    setIsFocused(false);
+    Animated.timing(modalAnim, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  };
+
   // Handle suggestion selection
   const handleSuggestionPress = (suggestion) => {
     const beforeCursor = value.substring(0, cursorPosition);
@@ -213,52 +239,158 @@ const CaptionInput = ({
   );
 
   return (
-    <View style={[styles.container, style]}>
-      <TextInput
-        ref={textInputRef}
-        style={styles.textInput}
-        value={value}
-        onChangeText={handleTextChange}
-        onSelectionChange={(event) => {
-          setCursorPosition(event.nativeEvent.selection.start);
-        }}
-        placeholder={placeholder}
-        placeholderTextColor="#666666"
-        multiline
-        maxLength={maxLength}
-        textAlignVertical="top"
-      />
+    <>
+      {/* Regular input (shown when not focused) */}
+      <View style={[styles.container, style, isFocused && styles.hidden]}>
+        <TextInput
+          ref={textInputRef}
+          style={styles.textInput}
+          value={value}
+          onChangeText={handleTextChange}
+          onSelectionChange={(event) => {
+            setCursorPosition(event.nativeEvent.selection.start);
+          }}
+          onFocus={handleFocus}
+          placeholder={placeholder}
+          placeholderTextColor="#666666"
+          multiline
+          maxLength={maxLength}
+          textAlignVertical="top"
+        />
 
-      {/* Character count */}
-      <Text style={styles.characterCount}>
-        {value.length}/{maxLength}
-      </Text>
+        {/* Character count */}
+        <Text style={styles.characterCount}>
+          {value.length}/{maxLength}
+        </Text>
 
-      {/* Suggestions dropdown */}
-      {showSuggestions && (
-        <Animated.View
-          style={[styles.suggestionsContainer, { height: suggestionHeight }]}
+        {/* Suggestions dropdown */}
+        {showSuggestions && (
+          <Animated.View
+            style={[styles.suggestionsContainer, { height: suggestionHeight }]}
+          >
+            <FlatList
+              data={suggestions}
+              keyExtractor={(item, index) =>
+                suggestionType === "mention"
+                  ? item.id || item.username || index.toString()
+                  : item + index.toString()
+              }
+              renderItem={renderSuggestionItem}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            />
+          </Animated.View>
+        )}
+      </View>
+
+      {/* Full-screen modal for focused input */}
+      <Modal
+        visible={isFocused}
+        transparent={true}
+        animationType="none"
+        onRequestClose={handleBlur}
+      >
+        <Animated.View 
+          style={[
+            styles.modalOverlay,
+            {
+              opacity: modalAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0, 1],
+              }),
+            },
+          ]}
         >
-          <FlatList
-            data={suggestions}
-            keyExtractor={(item, index) =>
-              suggestionType === "mention"
-                ? item.id || item.username || index.toString()
-                : item + index.toString()
-            }
-            renderItem={renderSuggestionItem}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
+          {/* Greyed background */}
+          <TouchableOpacity 
+            style={styles.modalBackground} 
+            activeOpacity={1}
+            onPress={handleBlur}
           />
+          
+          {/* Top input container */}
+          <Animated.View 
+            style={[
+              styles.modalInputContainer,
+              {
+                transform: [
+                  {
+                    translateY: modalAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [50, 0],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            {/* Header */}
+            <View style={styles.modalHeader}>
+              <View style={styles.modalSpacer} />
+              <Text style={styles.modalTitle}>Caption</Text>
+              <TouchableOpacity 
+                style={styles.modalDoneButton}
+                onPress={handleBlur}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="checkmark" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Input */}
+            <View style={styles.modalInputWrapper}>
+              <TextInput
+                style={styles.modalTextInput}
+                value={value}
+                onChangeText={handleTextChange}
+                onSelectionChange={(event) => {
+                  setCursorPosition(event.nativeEvent.selection.start);
+                }}
+                placeholder={placeholder}
+                placeholderTextColor="#666666"
+                multiline
+                maxLength={maxLength}
+                textAlignVertical="top"
+                autoFocus={true}
+              />
+              
+              {/* Character count */}
+              <Text style={styles.modalCharacterCount}>
+                {value.length}/{maxLength}
+              </Text>
+            </View>
+
+            {/* Suggestions in modal */}
+            {showSuggestions && (
+              <Animated.View
+                style={[styles.modalSuggestionsContainer, { height: suggestionHeight }]}
+              >
+                <FlatList
+                  data={suggestions}
+                  keyExtractor={(item, index) =>
+                    suggestionType === "mention"
+                      ? item.id || item.username || index.toString()
+                      : item + index.toString()
+                  }
+                  renderItem={renderSuggestionItem}
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                />
+              </Animated.View>
+            )}
+          </Animated.View>
         </Animated.View>
-      )}
-    </View>
+      </Modal>
+    </>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     position: "relative",
+  },
+  hidden: {
+    opacity: 0,
   },
   textInput: {
     fontSize: 16,
@@ -274,6 +406,89 @@ const styles = StyleSheet.create({
     right: 16,
     color: '#666666',
     fontSize: 12,
+  },
+
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-start',
+  },
+  modalBackground: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+  },
+  modalInputContainer: {
+    backgroundColor: '#1a1a1a',
+    borderBottomWidth: 1,
+    borderBottomColor: '#333333',
+    paddingTop: 60, // Safe area
+    paddingBottom: 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    marginBottom: 16,
+  },
+  modalDoneButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#B5483D',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  modalTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  modalSpacer: {
+    width: 40,
+  },
+  modalInputWrapper: {
+    position: 'relative',
+    paddingHorizontal: 16,
+  },
+  modalTextInput: {
+    fontSize: 16,
+    color: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingBottom: 32,
+    minHeight: 80,
+    textAlignVertical: 'top',
+    backgroundColor: '#333333',
+    borderRadius: 12,
+  },
+  modalCharacterCount: {
+    position: "absolute",
+    bottom: 8,
+    right: 16,
+    color: '#666666',
+    fontSize: 12,
+  },
+  modalSuggestionsContainer: {
+    backgroundColor: '#333333',
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.1)",
+    borderRadius: 12,
+    marginTop: 8,
+    marginHorizontal: 16,
+    overflow: "hidden",
   },
 
   // Parsed text styles (for preview)

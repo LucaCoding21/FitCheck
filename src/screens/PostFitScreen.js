@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -29,6 +29,7 @@ import KeyboardAwareContainer from "../components/KeyboardAwareContainer";
 import CaptionInput from "../components/CaptionInput";
 import notificationService from "../services/NotificationService";
 import OptimizedImage from "../components/OptimizedImage";
+import CustomTagModal from "../components/CustomTagModal";
 import Toast, { BaseToast, ErrorToast } from 'react-native-toast-message';
 import * as Haptics from 'expo-haptics';
 
@@ -44,48 +45,104 @@ export default function PostFitScreen({ navigation, route }) {
   const [groupMembers, setGroupMembers] = useState([]);
   const [userName, setUserName] = useState("");
   const [userProfileImageURL, setUserProfileImageURL] = useState("");
-  const [fadeAnim] = useState(new Animated.Value(0));
-  const [slideAnim] = useState(new Animated.Value(50));
-  const [scaleAnim] = useState(new Animated.Value(0.8));
+  const [fadeAnim] = useState(new Animated.Value(0)); // Start invisible for entrance animation
+  const [slideAnim] = useState(new Animated.Value(0)); // Start at right edge for slide-in
+  const [scaleAnim] = useState(new Animated.Value(1)); // Start at full scale
+  const [showCustomTagModal, setShowCustomTagModal] = useState(false);
+  const [userCustomTags, setUserCustomTags] = useState([]);
+  const [showAllTags, setShowAllTags] = useState(false);
+  
+  // ScrollView ref for programmatic scrolling
+  const scrollViewRef = useRef(null);
 
-  const availableTags = ["Casual", "HomeFit", "WorkFit", "GymFit"];
+  const defaultTags = ["Casual", "HomeFit", "WorkFit"];
+  const availableTags = [...defaultTags, ...userCustomTags];
+  
+  // Show first 6 tags by default, rest when expanded
+  const visibleTags = showAllTags ? availableTags : availableTags.slice(0, 6);
+  const hasMoreTags = availableTags.length > 6;
 
   useEffect(() => {
-    animateIn();
-  }, []);
-
-  useEffect(() => {
-    if (user && user.uid) {
-      fetchUserGroups();
-      fetchUserProfile();
-    }
+    // Smooth entrance animation for overlay
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 150, // Even faster for smoother feel
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 1,
+        duration: 150, // Even faster for smoother feel
+        useNativeDriver: true,
+      }),
+    ]).start();
+    
+    // Defer heavy operations to prevent lag during animation
+    const timer = setTimeout(() => {
+      if (user && user.uid) {
+        fetchUserProfile();
+        fetchUserGroups();
+      }
+    }, 150); // Reduced delay for faster loading
+    
+    return () => clearTimeout(timer);
   }, [user]);
 
   useEffect(() => {
     if (userGroups.length > 0) {
-      fetchGroupMembers();
+      // Defer group members fetch to reduce initial load time
+      const timer = setTimeout(() => {
+        fetchGroupMembers();
+      }, 300); // Reduced delay for faster loading
+      
+      // Track timeout for cleanup
+      if (!window.postFitTimeouts) {
+        window.postFitTimeouts = [];
+      }
+      window.postFitTimeouts.push(timer);
+      
+      return () => {
+        clearTimeout(timer);
+        const index = window.postFitTimeouts?.indexOf(timer);
+        if (index > -1) {
+          window.postFitTimeouts.splice(index, 1);
+        }
+      };
     }
   }, [userGroups]);
 
-  const animateIn = () => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 800,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 600,
-        useNativeDriver: true,
-      }),
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        tension: 50,
-        friction: 7,
-        useNativeDriver: true,
-      }),
-    ]).start();
+  // Add cleanup for animations and prevent memory leaks
+  useEffect(() => {
+    return () => {
+      // Cleanup animations on unmount
+      fadeAnim.stopAnimation();
+      slideAnim.stopAnimation();
+      scaleAnim.stopAnimation();
+      
+      // Clear any pending timeouts
+      if (window.postFitTimeouts) {
+        window.postFitTimeouts.forEach(timeout => clearTimeout(timeout));
+        window.postFitTimeouts = [];
+      }
+    };
+  }, [fadeAnim, slideAnim, scaleAnim]);
+
+  // Simplified exit animation for smooth transitions
+  const animateOut = () => {
+    return new Promise((resolve) => {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 0,
+          duration: 150, // Even faster for smoother feel
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: -width, // Slide to the left
+          duration: 150, // Even faster for smoother feel
+          useNativeDriver: true,
+        }),
+      ]).start(() => resolve());
+    });
   };
 
   const fetchUserProfile = async () => {
@@ -99,6 +156,7 @@ export default function PostFitScreen({ navigation, route }) {
         const userData = userDoc.data();
         setUserName(userData.username || user.email || "User");
         setUserProfileImageURL(userData.profileImageURL || "");
+        setUserCustomTags(userData.customTags || []);
       }
     } catch (error) {
       console.error("Error fetching user profile:", error);
@@ -133,28 +191,43 @@ export default function PostFitScreen({ navigation, route }) {
         return;
       }
       
-      const members = [];
-      for (const group of userGroups) {
-        if (!group.members || group.members.length === 0) {
-          continue;
+      // Collect all member UIDs from all groups
+      const allMemberUids = [];
+      userGroups.forEach(group => {
+        if (group.members && group.members.length > 0) {
+          allMemberUids.push(...group.members);
         }
-        
+      });
+      
+      // Remove duplicates and current user
+      const uniqueMemberUids = [...new Set(allMemberUids)].filter(uid => uid !== user.uid);
+      
+      if (uniqueMemberUids.length === 0) {
+        setGroupMembers([]);
+        return;
+      }
+      
+      // Batch query all members in one call (Firestore supports up to 10 items in 'in' clause)
+      const batchSize = 10;
+      const members = [];
+      
+      for (let i = 0; i < uniqueMemberUids.length; i += batchSize) {
+        const batch = uniqueMemberUids.slice(i, i + batchSize);
         const usersQuery = query(
           collection(db, "users"),
-          where("uid", "in", group.members)
+          where("uid", "in", batch)
         );
         const snapshot = await getDocs(usersQuery);
         snapshot.docs.forEach((doc) => {
           const userData = doc.data();
-          if (userData.uid !== user.uid) {
-            members.push({
-              id: doc.id,
-              name: userData.displayName || userData.email,
-              username: userData.username,
-            });
-          }
+          members.push({
+            id: doc.id,
+            name: userData.displayName || userData.email,
+            username: userData.username,
+          });
         });
       }
+      
       setGroupMembers(members);
     } catch (error) {
       console.error("Error fetching group members:", error);
@@ -180,6 +253,40 @@ export default function PostFitScreen({ navigation, route }) {
     } catch (error) {
       console.error("Error uploading image:", error);
       throw error;
+    }
+  };
+
+  const handleCustomTagAdded = (newTag) => {
+    // Add the new tag to local state
+    setUserCustomTags(prev => [...prev, newTag]);
+    // Automatically select the new tag
+    setSelectedTag(newTag);
+  };
+
+  const handleCustomTagDeleted = (deletedTag) => {
+    // Remove the deleted tag from local state
+    setUserCustomTags(prev => prev.filter(tag => tag !== deletedTag));
+    // If the deleted tag was selected, clear the selection
+    if (selectedTag === deletedTag) {
+      setSelectedTag("");
+    }
+  };
+
+  const handleOpenCustomTagModal = () => {
+    setShowCustomTagModal(true);
+  };
+
+  const handleToggleTags = () => {
+    if (showAllTags) {
+      // When collapsing tags, scroll to top
+      setShowAllTags(false);
+      // Use setTimeout to ensure state update happens before scroll
+      setTimeout(() => {
+        scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+      }, 100);
+    } else {
+      // When expanding tags, just show more
+      setShowAllTags(true);
     }
   };
 
@@ -275,23 +382,70 @@ export default function PostFitScreen({ navigation, route }) {
         comments: [],
         createdAt: new Date(),
         lastUpdated: new Date(),
+        date: new Date().toISOString().slice(0, 10), // Add date in YYYY-MM-DD format
       };
 
       const fitDocRef = await addDoc(collection(db, "fits"), fitData);
 
-      // Send notifications in the background (don't block UI)
-      notificationService.sendNewFitNotificationToAllGroups(
-        fitDocRef.id,
-        userName,
-        userGroups
-      ).catch(error => {
-        console.error('Error sending new fit notifications:', error);
-      });
-
       // Stronger haptic feedback
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-      // Navigate to Home tab in MainTabs and show toast
-      navigation.navigate('MainTabs', { screen: 'Home', params: { showPostToast: true } });
+      
+      // Set flag for HomeScreen to know we just posted
+      global.justPostedFit = true;
+      console.log('✅ PostFitScreen: Set global.justPostedFit = true');
+      
+      // Pass the new fit data for optimistic UI update
+      global.newPostedFitData = {
+        id: fitDocRef.id,
+        ...fitData
+      };
+      
+      // Trigger skeleton loading immediately
+      global.triggerSkeletonLoading = true;
+      console.log('✅ PostFitScreen: Triggering skeleton loading');
+      
+      // Animate out smoothly with faster timing
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 0,
+          duration: 150, // Even faster for smoother feel
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 150, // Even faster for smoother feel
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        // Simply close the overlay since we're already on Home tab in the background
+        if (navigation.goBack) {
+          navigation.goBack();
+        }
+      });
+      
+      // Show toast after navigation with minimal delay
+      setTimeout(() => {
+        Toast.show({
+          type: 'success',
+          text1: 'Fit posted successfully!',
+          text2: 'Your fit is now live in the feed',
+          position: 'bottom',
+          visibilityTime: 3000,
+          autoHide: true,
+          bottomOffset: 100,
+        });
+      }, 25); // Minimal delay
+
+      // Send notifications in background with minimal impact
+      setTimeout(() => {
+        notificationService.sendNewFitNotificationToAllGroups(
+          fitDocRef.id,
+          userName,
+          userGroups
+        ).catch(error => {
+          console.error('Error sending new fit notifications:', error);
+        });
+      }, 1000);
 
     } catch (error) {
       console.error("Error posting fit:", error);
@@ -325,12 +479,47 @@ export default function PostFitScreen({ navigation, route }) {
   }
 
   return (
-    <View style={styles.container}>
+    <Animated.View 
+      style={[
+        styles.container,
+        {
+          transform: [
+            {
+              translateX: slideAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [width, 0], // Slide in from right
+              }),
+            },
+          ],
+          opacity: fadeAnim,
+        },
+      ]}
+    >
       <StatusBar barStyle="light-content" backgroundColor="#222222" />
 
       {/* Back Button */}
       <TouchableOpacity
-        onPress={() => navigation.goBack()}
+        onPress={() => {
+          // Prevent multiple taps
+          if (loading) return;
+          
+          // Animate out smoothly
+          Animated.parallel([
+            Animated.timing(fadeAnim, {
+              toValue: 0,
+              duration: 200, // Faster animation
+              useNativeDriver: true,
+            }),
+            Animated.timing(slideAnim, {
+              toValue: 0,
+              duration: 200, // Faster animation
+              useNativeDriver: true,
+            }),
+          ]).start(() => {
+            // Navigate back after animation completes
+            navigation.goBack();
+          });
+        }}
         style={styles.backButton}
         activeOpacity={0.7}
       >
@@ -339,19 +528,16 @@ export default function PostFitScreen({ navigation, route }) {
 
       <KeyboardAwareContainer style={styles.contentContainer}>
         <ScrollView
+          ref={scrollViewRef}
           style={styles.scrollContainer}
           contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
+          showsVerticalScrollIndicator={true}
           keyboardShouldPersistTaps="handled"
-          bounces={false}
+          bounces={true}
+          nestedScrollEnabled={true}
         >
           {/* Image Section */}
-          <Animated.View 
-            style={[
-              styles.imageSection,
-              { opacity: fadeAnim, transform: [{ scale: scaleAnim }] }
-            ]}
-          >
+          <View style={styles.imageSection}>
             {image && (image.localUri || image.uri) ? (
               <OptimizedImage 
                 source={{ uri: image.localUri || image.uri }} 
@@ -359,6 +545,8 @@ export default function PostFitScreen({ navigation, route }) {
                 contentFit="cover"
                 priority="high"
                 cachePolicy="memory-disk"
+                transition={100} // Quick transition for responsiveness
+                showLoadingIndicator={true} // Show loading indicator for better UX
               />
             ) : (
               <View style={styles.imagePlaceholder}>
@@ -366,15 +554,10 @@ export default function PostFitScreen({ navigation, route }) {
                 <Text style={styles.placeholderText}>Select a photo</Text>
               </View>
             )}
-          </Animated.View>
+          </View>
 
           {/* Caption Section */}
-          <Animated.View 
-            style={[
-              styles.captionSection,
-              { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }
-            ]}
-          >
+          <View style={styles.captionSection}>
             <Text style={styles.sectionLabel}>Caption</Text>
             <View style={styles.captionInputContainer}>
               <CaptionInput
@@ -390,18 +573,24 @@ export default function PostFitScreen({ navigation, route }) {
                 style={styles.captionInput}
               />
             </View>
-          </Animated.View>
+          </View>
 
           {/* Tags Section */}
-          <Animated.View 
-            style={[
-              styles.tagsSection,
-              { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }
-            ]}
-          >
-            <Text style={styles.sectionLabel}>Tags</Text>
+          <View style={styles.tagsSection}>
+            <View style={styles.tagsHeader}>
+              <Text style={styles.sectionLabel}>Tags</Text>
+              <TouchableOpacity
+                style={styles.addTagButton}
+                onPress={handleOpenCustomTagModal}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="add-circle" size={20} color="#B5483D" />
+                <Text style={styles.addTagText}>Add Custom Tag</Text>
+              </TouchableOpacity>
+            </View>
+            
             <View style={styles.tagsContainer}>
-              {availableTags.map((tag) => (
+              {visibleTags.map((tag) => (
                 <TouchableOpacity
                   key={tag}
                   style={[
@@ -419,18 +608,21 @@ export default function PostFitScreen({ navigation, route }) {
                   </Text>
                 </TouchableOpacity>
               ))}
-              <TouchableOpacity
-                style={styles.addTagButton}
-                onPress={() => {
-                  // Could open a modal to add custom tags
-                  console.log("Add custom tag");
-                }}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.addTagText}>+Add</Text>
-              </TouchableOpacity>
+              
+              {/* Show More/Less Button */}
+              {hasMoreTags && (
+                <TouchableOpacity
+                  style={styles.showMoreButton}
+                  onPress={handleToggleTags}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.showMoreText}>
+                    {showAllTags ? 'Show Less' : `+${availableTags.length - 6} More`}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
-          </Animated.View>
+          </View>
         </ScrollView>
       </KeyboardAwareContainer>
 
@@ -448,15 +640,29 @@ export default function PostFitScreen({ navigation, route }) {
           {loading ? "Posting..." : "Post"}
         </Text>
       </TouchableOpacity>
+      
+      {/* Custom Tag Modal */}
+      <CustomTagModal
+        visible={showCustomTagModal}
+        onClose={() => setShowCustomTagModal(false)}
+        onTagAdded={handleCustomTagAdded}
+        onTagDeleted={handleCustomTagDeleted}
+      />
+      
       <Toast config={toastConfig} />
-    </View>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: '#222222',
+    zIndex: 1001, // Higher than PhotoPicker
   },
   backButton: {
     position: 'absolute',
@@ -474,11 +680,12 @@ const styles = StyleSheet.create({
   },
   scrollContainer: {
     flex: 1,
+    backgroundColor: 'transparent',
   },
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: 20,
-    paddingBottom: 100,
+    paddingBottom: 140, // Increased to prevent overlap with post button
   },
   imageSection: {
     aspectRatio: 1,
@@ -530,10 +737,17 @@ const styles = StyleSheet.create({
   tagsSection: {
     marginBottom: 20,
   },
+  tagsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
   tagsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
+    minHeight: 40, // Ensure minimum height for better touch targets
   },
   tagButton: {
     backgroundColor: '#2A2A2A',
@@ -556,17 +770,41 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   addTagButton: {
-    backgroundColor: '#333333',
-    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+    paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 20,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#333333',
+    borderColor: '#B5483D',
   },
   addTagText: {
+    color: '#B5483D',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  showMoreButton: {
+    backgroundColor: '#B5483D',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#B5483D',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  showMoreText: {
     color: '#FFFFFF',
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   postButton: {
     position: 'absolute',

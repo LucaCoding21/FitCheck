@@ -340,9 +340,14 @@ class NotificationService {
       const fitOwnerId = auth.currentUser?.uid;
       const notifiedUsers = new Set(); // Track users who have been notified
       
+      // Batch fetch all group documents at once
+      const groupPromises = userGroups.map(group => 
+        getDoc(doc(db, 'groups', group.id))
+      );
+      const groupDocs = await Promise.all(groupPromises);
+      
       // Collect all unique members from all groups
-      for (const group of userGroups) {
-        const groupDoc = await getDoc(doc(db, 'groups', group.id));
+      for (const groupDoc of groupDocs) {
         if (!groupDoc.exists()) continue;
 
         const groupData = groupDoc.data();
@@ -358,35 +363,53 @@ class NotificationService {
 
       console.log(`Sending notifications to ${notifiedUsers.size} unique users`);
 
-      // Send one notification per unique user
-      for (const userId of notifiedUsers) {
-        // Check user's notification preferences
-        try {
-          const userDoc = await getDoc(doc(db, 'users', userId));
-          if (userDoc.exists()) {
-            const userData = userDoc.data();
-            const preferences = userData.notificationPreferences || {};
-            
-            if (preferences.newFitNotifications === false) {
-              console.log('New fit notifications disabled for user:', userId);
-              continue;
-            }
+      // Batch fetch user preferences to reduce Firestore calls
+      const userIds = Array.from(notifiedUsers);
+      const userPromises = userIds.map(userId => 
+        getDoc(doc(db, 'users', userId))
+      );
+      const userDocs = await Promise.all(userPromises);
+      
+      // Filter out users who have disabled notifications
+      const usersToNotify = [];
+      userDocs.forEach((userDoc, index) => {
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          const preferences = userData.notificationPreferences || {};
+          
+          if (preferences.newFitNotifications !== false) {
+            usersToNotify.push(userIds[index]);
           }
-        } catch (error) {
-          console.error('Error checking notification preferences:', error);
         }
+      });
 
-        const notificationData = {
-          title: 'New Fit Posted',
-          body: `${fitOwnerName} posted a new fit`,
-          data: {
-            type: 'new_fit',
-            fitId,
-            fitOwnerName,
-          },
-        };
+      console.log(`Actually notifying ${usersToNotify.length} users (after preferences)`);
 
-        await this.sendNotificationToUser(userId, notificationData);
+      // Send notifications in parallel with rate limiting
+      const notificationData = {
+        title: 'New Fit Posted',
+        body: `${fitOwnerName} posted a new fit`,
+        data: {
+          type: 'new_fit',
+          fitId,
+          fitOwnerName,
+        },
+      };
+
+      // Send notifications in batches to avoid overwhelming the system
+      const batchSize = 5;
+      for (let i = 0; i < usersToNotify.length; i += batchSize) {
+        const batch = usersToNotify.slice(i, i + batchSize);
+        const batchPromises = batch.map(userId => 
+          this.sendNotificationToUser(userId, notificationData)
+        );
+        
+        await Promise.all(batchPromises);
+        
+        // Small delay between batches to prevent rate limiting
+        if (i + batchSize < usersToNotify.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
       }
 
     } catch (error) {

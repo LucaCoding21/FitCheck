@@ -10,13 +10,84 @@ import {
   SafeAreaView,
   RefreshControl,
   Alert,
+  ActivityIndicator,
+  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, query, where, orderBy, onSnapshot, getDoc, doc } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, getDoc, doc, getDocs } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { theme } from '../styles/theme';
 import OptimizedImage from '../components/OptimizedImage';
+import { formatRating } from '../utils/ratingUtils';
+
+const { width } = Dimensions.get('window');
+const GRID_SPACING = 4;
+const GRID_ITEM_SIZE = (width - (GRID_SPACING * 2)) / 3; // No side padding
+
+// Skeleton Loading Components
+const SkeletonView = ({ width, height, style, animatedValue }) => (
+  <Animated.View
+    style={[
+      {
+        width,
+        height,
+        backgroundColor: '#333333',
+        borderRadius: 8,
+        opacity: animatedValue,
+      },
+      style,
+    ]}
+  />
+);
+
+const ProfileSkeleton = ({ fadeAnim }) => (
+  <View style={styles.skeletonContainer}>
+    {/* Profile Image Skeleton */}
+    <View style={styles.skeletonProfileImageContainer}>
+      <SkeletonView 
+        width={120} 
+        height={120} 
+        style={styles.skeletonProfileImage} 
+        animatedValue={fadeAnim} 
+      />
+    </View>
+    
+    {/* Username Skeleton */}
+    <SkeletonView 
+      width={140} 
+      height={24} 
+      style={styles.skeletonUsername} 
+      animatedValue={fadeAnim} 
+    />
+    
+    {/* Fits Count Skeleton */}
+    <SkeletonView 
+      width={100} 
+      height={16} 
+      style={styles.skeletonFitsCount} 
+      animatedValue={fadeAnim} 
+    />
+  </View>
+);
+
+const FitGridSkeleton = ({ fadeAnim }) => {
+  const skeletonItems = Array.from({ length: 9 }, (_, index) => ({ id: `skeleton-${index}` }));
+  
+  return (
+    <View style={styles.fitGrid}>
+      {skeletonItems.map((item) => (
+        <SkeletonView
+          key={item.id}
+          width={GRID_ITEM_SIZE}
+          height={GRID_ITEM_SIZE}
+          style={styles.skeletonGridItem}
+          animatedValue={fadeAnim}
+        />
+      ))}
+    </View>
+  );
+};
 
 // Helper function to get user's fits
 export const getMyFits = async (userId) => {
@@ -46,25 +117,8 @@ export const getMyFits = async (userId) => {
   }
 };
 
-// Helper function to format date
-const formatDate = (date) => {
-  if (!date) return 'Unknown date';
-  
-  const dateObj = date.toDate ? date.toDate() : new Date(date);
-  const now = new Date();
-  
-  // Show the date in a clean format
-  const options = { 
-    month: 'short', 
-    day: 'numeric',
-    year: dateObj.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
-  };
-  
-  return dateObj.toLocaleDateString('en-US', options);
-};
-
-// Helper function to format rating
-const formatRating = (fit) => {
+// Helper function to calculate rating
+const calculateRating = (fit) => {
   if (!fit.ratingCount || fit.ratingCount < 1) {
     return null;
   }
@@ -89,54 +143,51 @@ export default function ProfileScreen({ navigation }) {
   const { user, signOutUser } = useAuth();
   const [myFits, setMyFits] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+
   const [userData, setUserData] = useState(null);
-  const [fadeAnim] = useState(new Animated.Value(0));
-  const [slideAnim] = useState(new Animated.Value(30));
+  const [fadeAnim] = useState(new Animated.Value(1)); // Start visible
   const unsubscribeRef = useRef(null);
+
+  // Skeleton animation
+  const [skeletonAnim] = useState(new Animated.Value(0.3));
 
   useEffect(() => {
     if (user?.uid) {
       fetchUserData();
-      const unsubscribe = setupRealTimeListener();
-      unsubscribeRef.current = unsubscribe;
-      animateIn();
+      fetchFits();
+      startSkeletonAnimation();
       
-      // Cleanup function to unsubscribe when component unmounts or user changes
       return () => {
         if (unsubscribeRef.current) {
           unsubscribeRef.current();
         }
       };
     } else {
-      // Reset state when user is not available
       setMyFits([]);
       setUserData(null);
       setLoading(false);
     }
   }, [user]);
 
-  // Add focus listener to ensure data is fresh when navigating back to profile
-  useEffect(() => {
-    const unsubscribeFocus = navigation.addListener('focus', () => {
-      // The real-time listener should already be active, but this ensures fresh data
-      if (user?.uid && !loading) {
-        // Trigger a brief refresh to ensure we have the latest data
-        setRefreshing(true);
-        setTimeout(() => {
-          setRefreshing(false);
-        }, 500);
-      }
-    });
-
-    return unsubscribeFocus;
-  }, [navigation, user, loading]);
+  const startSkeletonAnimation = () => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(skeletonAnim, {
+          toValue: 0.7,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(skeletonAnim, {
+          toValue: 0.3,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  };
 
   const fetchUserData = async () => {
-    if (!user?.uid) {
-      console.log('User not available, skipping user data fetch');
-      return;
-    }
+    if (!user?.uid) return;
 
     try {
       const userDoc = await getDoc(doc(db, 'users', user.uid));
@@ -148,38 +199,22 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
-  const animateIn = () => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 600,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 500,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  };
+  const fetchFits = async () => {
+    if (!user?.uid) return;
 
-  const setupRealTimeListener = () => {
-    if (!user?.uid) {
-      console.log('User not available, skipping real-time listener setup');
-      return null;
-    }
+    try {
+      // Only show loading if we don't have any data yet
+      if (myFits.length === 0) {
+        setLoading(true);
+      }
+      
+      const fitsQuery = query(
+        collection(db, 'fits'),
+        where('userId', '==', user.uid),
+        orderBy('createdAt', 'desc')
+      );
 
-    setLoading(true);
-    
-    // Create real-time query for user's fits
-    const fitsQuery = query(
-      collection(db, 'fits'),
-      where('userId', '==', user.uid),
-      orderBy('createdAt', 'desc')
-    );
-
-    // Set up real-time listener
-    const unsubscribe = onSnapshot(fitsQuery, (snapshot) => {
+      const snapshot = await getDocs(fitsQuery);
       const fits = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
@@ -187,45 +222,28 @@ export default function ProfileScreen({ navigation }) {
       
       setMyFits(fits);
       setLoading(false);
-    }, (error) => {
-      console.error('Error listening to fits:', error);
+    } catch (error) {
+      console.error('Error fetching fits:', error);
       setLoading(false);
-    });
-
-    // Return the unsubscribe function
-    return unsubscribe;
+    }
   };
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    // The real-time listener will automatically update the data
-    // We just need to show the refresh indicator briefly
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 1000);
-  };
+
+
+
 
   const handleSignOut = async () => {
     Alert.alert(
       'Sign Out',
       'Are you sure you want to sign out?',
       [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
+        { text: 'Cancel', style: 'cancel' },
         {
           text: 'Sign Out',
           style: 'destructive',
           onPress: async () => {
             try {
-              // Clean up real-time listeners before signing out
-              if (unsubscribeRef.current) {
-                unsubscribeRef.current();
-              }
-              
               await signOutUser();
-              // Navigation will be handled automatically by App.js when user becomes null
             } catch (error) {
               console.error('Error signing out:', error);
               Alert.alert('Error', 'Failed to sign out. Please try again.');
@@ -236,59 +254,52 @@ export default function ProfileScreen({ navigation }) {
     );
   };
 
+  const handleEditProfile = () => {
+    Alert.alert(
+      'Edit Profile',
+      'Edit mode coming soon!',
+      [{ text: 'OK', style: 'default' }]
+    );
+  };
+
   const renderFitItem = ({ item, index }) => {
-    const rating = formatRating(item);
+    const rating = calculateRating(item);
     
     return (
       <TouchableOpacity
         onPress={() => navigation.navigate('FitDetails', { fitId: item.id })}
         activeOpacity={0.9}
-        style={styles.fitItemContainer}
+        style={styles.fitGridItem}
       >
         <Animated.View
           style={[
-            styles.fitItem,
+            styles.fitImageContainer,
             {
               opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }],
             },
           ]}
         >
-          {/* Fit Image */}
-          <View style={styles.imageContainer}>
-            {item.imageURL ? (
-              <OptimizedImage
-                source={{ uri: item.imageURL }}
-                style={styles.fitImage}
-                contentFit="cover"
-                priority="normal"
-                cachePolicy="memory-disk"
-              />
-            ) : (
-              <View style={styles.placeholderImage}>
-                <Ionicons name="camera-outline" size={32} color="#666" />
-              </View>
-            )}
-            
-            {/* Rating Badge */}
-            {rating && (
-              <View style={styles.ratingBadge}>
-                <Ionicons name="star" size={12} color="#CD9F3E" />
-                <Text style={styles.ratingText}>{rating.toFixed(1)}</Text>
-              </View>
-            )}
-          </View>
-
-          {/* Fit Info */}
-          <View style={styles.fitInfo}>
-            <Text style={styles.caption} numberOfLines={2}>
-              {item.caption || 'No caption'}
-            </Text>
-            <View style={styles.fitMeta}>
-              <Text style={styles.tag}>#{item.tag || 'no-tag'}</Text>
-              <Text style={styles.date}>{formatDate(item.createdAt)}</Text>
+          {item.imageURL ? (
+            <OptimizedImage
+              source={{ uri: item.imageURL }}
+              style={styles.fitImage}
+              contentFit="cover"
+              priority="normal"
+              cachePolicy="memory-disk"
+            />
+          ) : (
+            <View style={styles.placeholderImage}>
+              <Ionicons name="camera-outline" size={24} color="#666" />
             </View>
-          </View>
+          )}
+          
+          {/* Rating Badge */}
+          {rating && (
+            <View style={styles.ratingBadge}>
+              <Ionicons name="star" size={10} color="#CD9F3E" />
+              <Text style={styles.ratingText}>{formatRating(rating)}</Text>
+            </View>
+          )}
         </Animated.View>
       </TouchableOpacity>
     );
@@ -300,7 +311,6 @@ export default function ProfileScreen({ navigation }) {
         styles.emptyState,
         {
           opacity: fadeAnim,
-          transform: [{ translateY: slideAnim }],
         },
       ]}
     >
@@ -322,64 +332,87 @@ export default function ProfileScreen({ navigation }) {
     </Animated.View>
   );
 
-  const renderHeader = () => (
-    <Animated.View
-      style={[
-        styles.header,
-        {
-          opacity: fadeAnim,
-          transform: [{ translateY: slideAnim }],
-        },
-      ]}
-    >
-      <View style={styles.headerContent}>
-        <View style={styles.headerText}>
-          <Text style={styles.headerTitle}>Profile</Text>
-          {userData?.username && (
-            <Text style={styles.username}>@{userData.username}</Text>
-          )}
-          <Text style={styles.headerSubtitle}>
-            {myFits.length} fit{myFits.length !== 1 ? 's' : ''} in your archive
-          </Text>
+  const renderContent = () => {
+    if (loading && myFits.length === 0) {
+      return (
+        <View style={styles.container}>
+          <ProfileSkeleton fadeAnim={skeletonAnim} />
+          <FitGridSkeleton fadeAnim={skeletonAnim} />
         </View>
-        <TouchableOpacity 
-          style={styles.settingsButton}
-          onPress={handleSignOut}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="log-out-outline" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-      </View>
-    </Animated.View>
-  );
+      );
+    }
 
-  if (loading) {
     return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
-        <View style={styles.loadingContent}>
-          <Ionicons name="shirt-outline" size={48} color="#666" />
-          <Text style={styles.loadingText}>Loading your archive...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
+      <View style={styles.container}>
+        {/* Header */}
+        <Animated.View
+          style={[
+            styles.header,
+            {
+              opacity: fadeAnim,
+            },
+          ]}
+        >
+          <Text style={styles.headerTitle}>Profile</Text>
+          <TouchableOpacity 
+            style={styles.settingsButton}
+            onPress={handleSignOut}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="settings-outline" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+        </Animated.View>
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
-      
-      {renderHeader()}
+        {/* Profile Section */}
+        <Animated.View
+          style={[
+            styles.profileSection,
+            {
+              opacity: fadeAnim,
+            },
+          ]}
+        >
+          {/* Profile Image with Edit Icon */}
+          <View style={styles.profileImageContainer}>
+            {userData?.profileImageURL ? (
+              <OptimizedImage
+                source={{ uri: userData.profileImageURL }}
+                style={styles.profileImage}
+                contentFit="cover"
+                showLoadingIndicator={false}
+              />
+            ) : (
+              <View style={styles.profileImagePlaceholder}>
+                <Text style={styles.profileImageText}>
+                  {userData?.username?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase() || 'U'}
+                </Text>
+              </View>
+            )}
+            
+            {/* Edit Icon Overlay */}
+            <TouchableOpacity
+              style={styles.editIconContainer}
+              onPress={handleEditProfile}
+              activeOpacity={0.8}
+            >
+              <View style={styles.editIconBackground}>
+                <Ionicons name="pencil" size={12} color="#FFFFFF" />
+              </View>
+            </TouchableOpacity>
+          </View>
 
-      <Animated.View
-        style={[
-          styles.content,
-          {
-            opacity: fadeAnim,
-            transform: [{ translateY: slideAnim }],
-          },
-        ]}
-      >
+          {/* Username */}
+          <Text style={styles.username}>
+            {userData?.username || userData?.displayName || user?.email || 'User'}
+          </Text>
+
+          {/* Fits Count */}
+          <Text style={styles.fitsCount}>
+            {myFits.length} Fits saved
+          </Text>
+        </Animated.View>
+
+        {/* Fits Grid */}
         {myFits.length === 0 ? (
           renderEmptyState()
         ) : (
@@ -387,21 +420,20 @@ export default function ProfileScreen({ navigation }) {
             data={myFits}
             keyExtractor={(item) => item.id}
             renderItem={renderFitItem}
+            numColumns={3}
+            columnWrapperStyle={styles.fitGrid}
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.listContainer}
-            numColumns={2}
-            columnWrapperStyle={styles.row}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={onRefresh}
-                tintColor="#FFFFFF"
-                colors={["#FFFFFF"]}
-              />
-            }
+            contentContainerStyle={styles.fitList}
           />
         )}
-      </Animated.View>
+      </View>
+    );
+  };
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
+      {renderContent()}
     </SafeAreaView>
   );
 }
@@ -409,81 +441,103 @@ export default function ProfileScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background,
+    backgroundColor: '#1A1A1A',
   },
   
   // Header styles
   header: {
-    paddingTop: 20,
-    paddingHorizontal: 20,
-    paddingBottom: 24,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  headerContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-  },
-  headerText: {
-    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 24,
   },
   headerTitle: {
     fontSize: 28,
     fontWeight: '700',
-    color: theme.colors.text,
-    marginBottom: 4,
-  },
-  username: {
-    fontSize: 18,
-    color: theme.colors.primary,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  headerSubtitle: {
-    fontSize: 16,
-    color: theme.colors.textSecondary,
-    fontWeight: '400',
+    color: '#FFFFFF',
   },
   settingsButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: theme.colors.surface,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     justifyContent: 'center',
     alignItems: 'center',
-    ...theme.shadows.sm,
   },
 
-  // Content styles
-  content: {
-    flex: 1,
+  // Profile section styles
+  profileSection: {
+    alignItems: 'center',
+    paddingBottom: 26,
   },
-  listContainer: {
-    paddingHorizontal: 16,
-    paddingTop: 20,
-    paddingBottom: 100, // Extra padding for bottom navigation
+  profileImageContainer: {
+    position: 'relative',
+    marginBottom: 16,
   },
-  row: {
+  profileImage: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    overflow: 'hidden',
+  },
+  profileImagePlaceholder: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: '#333333',
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  profileImageText: {
+    fontSize: 48,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  editIconContainer: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+  },
+  editIconBackground: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#333333',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#1A1A1A',
+  },
+  username: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  fitsCount: {
+    fontSize: 16,
+    color: '#999999',
+    textAlign: 'center',
+  },
+
+  // Fit grid styles
+  fitGrid: {
     justifyContent: 'space-between',
   },
-
-  // Fit item styles
-  fitItemContainer: {
-    width: '48%',
-    marginBottom: 20,
+  fitGridItem: {
+    width: GRID_ITEM_SIZE,
+    height: GRID_ITEM_SIZE,
+    marginBottom: GRID_SPACING,
   },
-  fitItem: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.borderRadius.lg,
-    overflow: 'hidden',
-    ...theme.shadows.sm,
-  },
-  imageContainer: {
-    position: 'relative',
+  fitImageContainer: {
     width: '100%',
-    aspectRatio: 1,
-    backgroundColor: '#333',
+    height: '100%',
+    overflow: 'hidden',
+    backgroundColor: '#333333',
   },
   fitImage: {
     width: '100%',
@@ -492,51 +546,29 @@ const styles = StyleSheet.create({
   placeholderImage: {
     width: '100%',
     height: '100%',
-    backgroundColor: '#333',
+    backgroundColor: '#333333',
     justifyContent: 'center',
     alignItems: 'center',
   },
   ratingBadge: {
     position: 'absolute',
-    top: 8,
-    right: 8,
+    top: 6,
+    right: 6,
     backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
     flexDirection: 'row',
     alignItems: 'center',
   },
   ratingText: {
-    fontSize: 12,
+    fontSize: 10,
     color: '#FFFFFF',
     fontWeight: '600',
     marginLeft: 2,
   },
-  fitInfo: {
-    padding: 12,
-  },
-  caption: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: theme.colors.text,
-    lineHeight: 18,
-    marginBottom: 8,
-  },
-  fitMeta: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  tag: {
-    fontSize: 12,
-    color: theme.colors.primary,
-    fontWeight: '500',
-  },
-  date: {
-    fontSize: 11,
-    color: theme.colors.textMuted,
-    fontWeight: '400',
+  fitList: {
+    paddingBottom: 100, // Extra padding for bottom navigation
   },
 
   // Empty state styles
@@ -550,34 +582,32 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: theme.colors.surface,
+    backgroundColor: '#333333',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 24,
-    ...theme.shadows.md,
   },
   emptyTitle: {
     fontSize: 24,
     fontWeight: '700',
-    color: theme.colors.text,
+    color: '#FFFFFF',
     marginBottom: 12,
     textAlign: 'center',
   },
   emptyText: {
     fontSize: 16,
-    color: theme.colors.textSecondary,
+    color: '#999999',
     textAlign: 'center',
     marginBottom: 32,
     lineHeight: 24,
   },
   postFitButton: {
-    backgroundColor: theme.colors.primary,
+    backgroundColor: '#B5483D',
     paddingHorizontal: 24,
     paddingVertical: 14,
-    borderRadius: theme.borderRadius.md,
+    borderRadius: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    ...theme.shadows.md,
   },
   buttonIcon: {
     marginRight: 8,
@@ -588,19 +618,24 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // Loading styles
-  loadingContainer: {
-    flex: 1,
-    backgroundColor: theme.colors.background,
-  },
-  loadingContent: {
-    flex: 1,
-    justifyContent: 'center',
+  // Skeleton styles
+  skeletonContainer: {
     alignItems: 'center',
+    paddingBottom: 32,
   },
-  loadingText: {
-    fontSize: 16,
-    color: theme.colors.textSecondary,
-    marginTop: 16,
+  skeletonProfileImageContainer: {
+    marginBottom: 16,
+  },
+  skeletonProfileImage: {
+    borderRadius: 60,
+  },
+  skeletonUsername: {
+    marginBottom: 8,
+    borderRadius: 4,
+  },
+  skeletonFitsCount: {
+    borderRadius: 4,
+  },
+  skeletonGridItem: {
   },
 }); 

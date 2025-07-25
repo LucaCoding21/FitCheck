@@ -19,6 +19,7 @@ import { useAuth } from '../contexts/AuthContext';
 import Comment from '../components/Comment';
 import CommentInput from '../components/CommentInput';
 import OptimizedImage from '../components/OptimizedImage';
+import { formatRating } from '../utils/ratingUtils';
 
 const { width, height } = Dimensions.get('window');
 
@@ -30,10 +31,18 @@ export default function FitDetailsScreen({ navigation, route }) {
   const [fadeAnim] = useState(new Animated.Value(0));
   const [slideAnim] = useState(new Animated.Value(50));
   const scrollViewRef = useRef(null);
+  const unsubscribeRef = useRef(null);
 
   useEffect(() => {
     fetchFitDetails();
     animateIn();
+    
+    return () => {
+      // Cleanup onSnapshot listener
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
+      }
+    };
   }, [fitId]);
 
   const animateIn = () => {
@@ -63,7 +72,8 @@ export default function FitDetailsScreen({ navigation, route }) {
         setLoading(false);
       });
 
-      return unsubscribe;
+      // Store unsubscribe function for cleanup
+      unsubscribeRef.current = unsubscribe;
     } catch (error) {
       console.error('Error fetching fit details:', error);
       setLoading(false);
@@ -93,7 +103,7 @@ export default function FitDetailsScreen({ navigation, route }) {
 
   const calculateDisplayRating = (fit) => {
     if (fit.fairRating && fit.fairRating > 0) {
-      return fit.fairRating.toFixed(1);
+      return formatRating(fit.fairRating);
     }
     
     if (fit.ratings && Object.keys(fit.ratings).length > 0) {
@@ -103,11 +113,11 @@ export default function FitDetailsScreen({ navigation, route }) {
       
       if (ratings.length > 0) {
         const average = ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length;
-        return Math.round(average * 10) / 10;
+        return formatRating(Math.round(average * 10) / 10);
       }
     }
     
-    return '0.0';
+    return '0';
   };
 
   const renderComment = ({ item, index }) => (
@@ -185,16 +195,8 @@ export default function FitDetailsScreen({ navigation, route }) {
       >
         <StatusBar barStyle="light-content" backgroundColor="#1a1a1a" />
       
-        {/* Back Button */}
-        <Animated.View
-          style={[
-            styles.backButtonContainer,
-            {
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }],
-            },
-          ]}
-        >
+        {/* Back Button - Outside animated container for instant response */}
+        <View style={styles.backButtonContainer}>
           <TouchableOpacity
             onPress={handleBackPress}
             style={styles.backButton}
@@ -202,7 +204,7 @@ export default function FitDetailsScreen({ navigation, route }) {
           >
             <Text style={styles.backIcon}>‹</Text>
           </TouchableOpacity>
-        </Animated.View>
+        </View>
 
         {/* Scrollable Content */}
         <ScrollView 

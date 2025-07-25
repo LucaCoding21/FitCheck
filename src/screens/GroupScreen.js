@@ -289,9 +289,18 @@ export default function GroupScreen({ navigation }) {
                 <Text style={styles.leaveButtonText}>Leave</Text>
               </TouchableOpacity>
             ) : (
-              <Text style={styles.activityText}>
-                {item.postedToday || 0}/{item.memberCount} posted today
-              </Text>
+              <View style={styles.activityInfo}>
+                <Text style={styles.activityText}>
+                  {item.postedToday || 0}/{item.memberCount} posted today
+                </Text>
+                {/* Streak Info */}
+                {item.streak > 0 && (
+                  <View style={styles.streakInfo}>
+                    <Ionicons name="flame" size={12} color="#FF6B35" />
+                    <Text style={styles.streakText}>{item.streak} day streak</Text>
+                  </View>
+                )}
+              </View>
             )}
           </View>
         </TouchableOpacity>
@@ -515,10 +524,25 @@ const styles = StyleSheet.create({
   activityContainer: {
     alignItems: 'flex-end',
   },
+  activityInfo: {
+    alignItems: 'flex-end',
+    gap: 4,
+  },
   activityText: {
     fontSize: 14,
     color: '#CD9F3E', // Golden-yellow color for activity
     fontWeight: "600",
+  },
+
+  streakInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  streakText: {
+    fontSize: 12,
+    color: '#FF6B35',
+    fontWeight: '500',
   },
   leaveButton: {
     flexDirection: 'row',

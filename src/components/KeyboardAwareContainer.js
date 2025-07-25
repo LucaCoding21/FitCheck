@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback } from "react";
 import { View, Keyboard, SafeAreaView, TouchableWithoutFeedback } from "react-native";
 import { theme } from "../styles/theme";
 
@@ -8,11 +8,11 @@ const KeyboardAwareContainer = ({
   dismissKeyboardOnTap = true,
   ...props
 }) => {
-  const handleScreenTap = () => {
+  const handleScreenTap = useCallback(() => {
     if (dismissKeyboardOnTap) {
       Keyboard.dismiss();
     }
-  };
+  }, [dismissKeyboardOnTap]);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }}>
