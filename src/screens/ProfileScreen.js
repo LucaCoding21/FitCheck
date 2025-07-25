@@ -9,17 +9,20 @@ import {
   TouchableOpacity,
   SafeAreaView,
   RefreshControl,
-  Alert,
   ActivityIndicator,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, query, where, orderBy, onSnapshot, getDoc, doc, getDocs } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import * as ImagePicker from 'expo-image-picker';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { collection, query, where, orderBy, onSnapshot, getDoc, doc, getDocs, updateDoc } from 'firebase/firestore';
+import { db, storage } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { theme } from '../styles/theme';
 import OptimizedImage from '../components/OptimizedImage';
 import { formatRating } from '../utils/ratingUtils';
+import Toast from 'react-native-toast-message';
 
 const { width } = Dimensions.get('window');
 const GRID_SPACING = 4;
@@ -143,6 +146,7 @@ export default function ProfileScreen({ navigation }) {
   const { user, signOutUser } = useAuth();
   const [myFits, setMyFits] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   const [userData, setUserData] = useState(null);
   const [fadeAnim] = useState(new Animated.Value(1)); // Start visible
@@ -151,17 +155,41 @@ export default function ProfileScreen({ navigation }) {
   // Skeleton animation
   const [skeletonAnim] = useState(new Animated.Value(0.3));
 
+  // Focus listener state to prevent multiple registrations
+  const focusListenerRegistered = useRef(false);
+  const lastFocusTime = useRef(0);
+
   useEffect(() => {
     if (user?.uid) {
       fetchUserData();
       fetchFits();
       startSkeletonAnimation();
       
-      return () => {
-        if (unsubscribeRef.current) {
-          unsubscribeRef.current();
-        }
-      };
+      // Enhanced focus listener to handle data refresh
+      if (!focusListenerRegistered.current) {
+        const unsubscribeFocus = navigation.addListener('focus', () => {
+          const currentTime = Date.now();
+          const timeSinceLastFocus = currentTime - lastFocusTime.current;
+          
+          // Only refresh if it's been more than 1 second since last focus
+          // This prevents excessive refreshes during rapid navigation
+          if (timeSinceLastFocus > 1000) {
+            console.log('🔄 ProfileScreen: Focus listener triggered, refreshing data...');
+            fetchUserData();
+            fetchFits(true); // Force refresh when coming back from other screens
+            lastFocusTime.current = currentTime;
+          }
+        });
+        
+        focusListenerRegistered.current = true;
+        
+        return () => {
+          unsubscribeFocus();
+          if (unsubscribeRef.current) {
+            unsubscribeRef.current();
+          }
+        };
+      }
     } else {
       setMyFits([]);
       setUserData(null);
@@ -199,12 +227,12 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
-  const fetchFits = async () => {
+  const fetchFits = async (forceRefresh = false) => {
     if (!user?.uid) return;
 
     try {
-      // Only show loading if we don't have any data yet
-      if (myFits.length === 0) {
+      // Only show loading if we don't have any data yet or if forcing refresh
+      if (myFits.length === 0 || forceRefresh) {
         setLoading(true);
       }
       
@@ -228,11 +256,22 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([fetchUserData(), fetchFits(true)]);
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
 
 
 
-  const handleSignOut = async () => {
+
+  const handleSignOut = React.useCallback(async () => {
     Alert.alert(
       'Sign Out',
       'Are you sure you want to sign out?',
@@ -252,17 +291,108 @@ export default function ProfileScreen({ navigation }) {
         },
       ]
     );
+  }, [signOutUser]);
+
+  const pickProfileImage = async () => {
+    try {
+      // Request permissions
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Toast.show({
+          type: 'error',
+          text1: 'Permission needed',
+          text2: 'Please grant camera roll permissions to select a profile picture.',
+          position: 'bottom',
+          visibilityTime: 3000,
+          autoHide: true,
+          bottomOffset: 60,
+        });
+        return;
+      }
+
+      // Launch image picker
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        await uploadProfileImage(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to pick image. Please try again.',
+        position: 'bottom',
+        visibilityTime: 3000,
+        autoHide: true,
+        bottomOffset: 60,
+      });
+    }
   };
 
-  const handleEditProfile = () => {
-    Alert.alert(
-      'Edit Profile',
-      'Edit mode coming soon!',
-      [{ text: 'OK', style: 'default' }]
-    );
+  const uploadProfileImage = async (imageUri) => {
+    if (!user?.uid) return;
+
+    try {
+      setLoading(true);
+      
+      // Fetch the image and convert to blob
+      const response = await fetch(imageUri);
+      const blob = await response.blob();
+      
+      // Upload to Firebase Storage
+      const imageRef = ref(storage, `profile-images/${user.uid}`);
+      await uploadBytes(imageRef, blob);
+      
+      // Get download URL
+      const downloadURL = await getDownloadURL(imageRef);
+      
+      // Update user document
+      await updateDoc(doc(db, 'users', user.uid), {
+        profileImageURL: downloadURL,
+        updatedAt: new Date(),
+      });
+
+      // Update local state
+      setUserData(prev => ({
+        ...prev,
+        profileImageURL: downloadURL,
+      }));
+
+      Toast.show({
+        type: 'success',
+        text1: 'Profile picture updated!',
+        position: 'bottom',
+        visibilityTime: 2000,
+        autoHide: true,
+        bottomOffset: 60,
+      });
+    } catch (error) {
+      console.error('Error uploading profile image:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to upload profile picture. Please try again.',
+        position: 'bottom',
+        visibilityTime: 3000,
+        autoHide: true,
+        bottomOffset: 60,
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const renderFitItem = ({ item, index }) => {
+  const handleEditProfile = React.useCallback(() => {
+    pickProfileImage();
+  }, [user?.uid]);
+
+  const renderFitItem = React.useCallback(({ item, index }) => {
     const rating = calculateRating(item);
     
     return (
@@ -303,9 +433,9 @@ export default function ProfileScreen({ navigation }) {
         </Animated.View>
       </TouchableOpacity>
     );
-  };
+  }, [navigation, fadeAnim]);
 
-  const renderEmptyState = () => (
+  const renderEmptyState = React.useCallback(() => (
     <Animated.View
       style={[
         styles.emptyState,
@@ -330,9 +460,9 @@ export default function ProfileScreen({ navigation }) {
         <Text style={styles.postFitButtonText}>Post Your First Fit</Text>
       </TouchableOpacity>
     </Animated.View>
-  );
+  ), [navigation, fadeAnim]);
 
-  const renderContent = () => {
+  const renderContent = React.useCallback(() => {
     if (loading && myFits.length === 0) {
       return (
         <View style={styles.container}>
@@ -356,10 +486,11 @@ export default function ProfileScreen({ navigation }) {
           <Text style={styles.headerTitle}>Profile</Text>
           <TouchableOpacity 
             style={styles.settingsButton}
-            onPress={handleSignOut}
-            activeOpacity={0.7}
+            onPress={() => navigation.navigate('Settings')}
+            activeOpacity={0.6}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Ionicons name="settings-outline" size={24} color="#FFFFFF" />
+            <Ionicons name="settings-outline" size={22} color="#FFFFFF" />
           </TouchableOpacity>
         </Animated.View>
 
@@ -394,9 +525,14 @@ export default function ProfileScreen({ navigation }) {
               style={styles.editIconContainer}
               onPress={handleEditProfile}
               activeOpacity={0.8}
+              disabled={loading}
             >
               <View style={styles.editIconBackground}>
-                <Ionicons name="pencil" size={12} color="#FFFFFF" />
+                {loading ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Ionicons name="pencil" size={12} color="#FFFFFF" />
+                )}
               </View>
             </TouchableOpacity>
           </View>
@@ -424,11 +560,20 @@ export default function ProfileScreen({ navigation }) {
             columnWrapperStyle={styles.fitGrid}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.fitList}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor="#FFFFFF"
+                colors={["#FFFFFF"]}
+                progressBackgroundColor="rgba(255, 255, 255, 0.1)"
+              />
+            }
           />
         )}
       </View>
     );
-  };
+  }, [loading, myFits.length, userData, user, fadeAnim, skeletonAnim, renderFitItem, renderEmptyState, refreshing, onRefresh, handleSignOut, handleEditProfile]);
 
   return (
     <SafeAreaView style={styles.container}>

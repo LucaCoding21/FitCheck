@@ -36,7 +36,12 @@ const CaptionInput = ({
 
   const textInputRef = useRef(null);
   const suggestionHeight = useRef(new Animated.Value(0)).current;
+  
+  // Enhanced animation values for Instagram-like transitions
   const modalAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+  const opacityAnim = useRef(new Animated.Value(0)).current;
+  const translateYAnim = useRef(new Animated.Value(50)).current;
 
   // Parse text for mentions and hashtags
   const parseText = (text) => {
@@ -133,23 +138,67 @@ const CaptionInput = ({
     });
   };
 
-  // Handle focus/blur for modal
+  // Enhanced focus animation - Instagram-like smooth entrance
   const handleFocus = () => {
     setIsFocused(true);
-    Animated.timing(modalAnim, {
-      toValue: 1,
-      duration: 300,
-      useNativeDriver: true,
-    }).start();
+    
+    // Reset animation values
+    scaleAnim.setValue(0.95);
+    opacityAnim.setValue(0);
+    translateYAnim.setValue(50);
+    
+    // Parallel animations for smooth entrance
+    Animated.parallel([
+      Animated.timing(modalAnim, {
+        toValue: 1,
+        duration: 350,
+        useNativeDriver: true,
+      }),
+      Animated.timing(scaleAnim, {
+        toValue: 1,
+        duration: 350,
+        useNativeDriver: true,
+      }),
+      Animated.timing(opacityAnim, {
+        toValue: 1,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateYAnim, {
+        toValue: 0,
+        duration: 350,
+        useNativeDriver: true,
+      }),
+    ]).start();
   };
 
+  // Enhanced blur animation - Instagram-like smooth exit
   const handleBlur = () => {
-    setIsFocused(false);
-    Animated.timing(modalAnim, {
-      toValue: 0,
-      duration: 300,
-      useNativeDriver: true,
-    }).start();
+    // Parallel animations for smooth exit
+    Animated.parallel([
+      Animated.timing(modalAnim, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.timing(scaleAnim, {
+        toValue: 0.95,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.timing(opacityAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateYAnim, {
+        toValue: 50,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setIsFocused(false);
+    });
   };
 
   // Handle suggestion selection
@@ -294,33 +343,40 @@ const CaptionInput = ({
           style={[
             styles.modalOverlay,
             {
-              opacity: modalAnim.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0, 1],
-              }),
+              opacity: modalAnim,
             },
           ]}
         >
-          {/* Greyed background */}
-          <TouchableOpacity 
-            style={styles.modalBackground} 
-            activeOpacity={1}
-            onPress={handleBlur}
-          />
+          {/* Greyed background with fade animation */}
+          <Animated.View 
+            style={[
+              styles.modalBackground,
+              {
+                opacity: modalAnim,
+              },
+            ]}
+          >
+            <TouchableOpacity 
+              style={styles.modalBackgroundTouchable} 
+              activeOpacity={1}
+              onPress={handleBlur}
+            />
+          </Animated.View>
           
-          {/* Top input container */}
+          {/* Top input container with enhanced animations */}
           <Animated.View 
             style={[
               styles.modalInputContainer,
               {
                 transform: [
                   {
-                    translateY: modalAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [50, 0],
-                    }),
+                    translateY: translateYAnim,
+                  },
+                  {
+                    scale: scaleAnim,
                   },
                 ],
+                opacity: opacityAnim,
               },
             ]}
           >
@@ -333,7 +389,20 @@ const CaptionInput = ({
                 onPress={handleBlur}
                 activeOpacity={0.7}
               >
-                <Ionicons name="checkmark" size={24} color="#FFFFFF" />
+                <Animated.View
+                  style={{
+                    transform: [
+                      {
+                        scale: modalAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.8, 1],
+                        }),
+                      },
+                    ],
+                  }}
+                >
+                  <Ionicons name="checkmark" size={24} color="#FFFFFF" />
+                </Animated.View>
               </TouchableOpacity>
             </View>
 
@@ -395,7 +464,7 @@ const styles = StyleSheet.create({
   textInput: {
     fontSize: 16,
     color: '#FFFFFF',
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     paddingVertical: 12,
     minHeight: 48,
     textAlignVertical: 'top',
@@ -421,12 +490,25 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
   },
+  modalBackgroundTouchable: {
+    flex: 1,
+  },
   modalInputContainer: {
     backgroundColor: '#1a1a1a',
     borderBottomWidth: 1,
     borderBottomColor: '#333333',
     paddingTop: 60, // Safe area
     paddingBottom: 20,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: -4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -450,6 +532,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   modalTitle: {
     color: '#FFFFFF',
@@ -466,7 +550,7 @@ const styles = StyleSheet.create({
   modalTextInput: {
     fontSize: 16,
     color: '#FFFFFF',
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     paddingVertical: 12,
     paddingBottom: 32,
     minHeight: 80,

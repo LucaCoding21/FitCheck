@@ -55,18 +55,12 @@ const CustomPhotoPicker = ({ visible, onClose, onImageSelected }) => {
   }, [selectedAlbum]);
 
   const animateIn = () => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-    ]).start();
+    // Simple fade in
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 200,
+      useNativeDriver: true,
+    }).start();
   };
 
   const requestPermissions = async () => {
@@ -234,7 +228,7 @@ const CustomPhotoPicker = ({ visible, onClose, onImageSelected }) => {
 
   const handleNext = () => {
     if (selectedPhoto) {
-      // Immediate transition without pre-loading
+      // Direct transition without animation for better performance
       onImageSelected(selectedPhoto);
     }
   };

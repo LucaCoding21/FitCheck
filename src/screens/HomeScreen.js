@@ -91,6 +91,8 @@ export default function HomeScreen({ navigation, route }) {
   const entranceFadeAnim = useRef(new Animated.Value(0)).current;
   const entranceSlideAnim = useRef(new Animated.Value(50)).current;
   const titleScale = useRef(new Animated.Value(0.8)).current;
+  
+
 
   // Calculate time until midnight
   const calculateTimeUntilMidnight = () => {
@@ -446,12 +448,8 @@ export default function HomeScreen({ navigation, route }) {
         ...doc.data()
       }));
 
-      // Apply group filter if needed
-      if (selectedGroup !== 'all') {
-        fitsData = fitsData.filter(fit => 
-          fit.groupIds && fit.groupIds.includes(selectedGroup)
-        );
-      }
+      // Store all fits without filtering - we'll apply client-side filtering
+      // This allows for instant filter switching without refetching
 
       // Update cache
       setCachedFits(fitsData);
@@ -461,27 +459,28 @@ export default function HomeScreen({ navigation, route }) {
       // Update all fits for filtering
       setAllFits(fitsData);
       
-      // Handle pagination
+      // Handle pagination with client-side filtering
       if (loadMore) {
-        // Load more fits
-        const startIndex = displayedFits.length;
-        const endIndex = startIndex + pageSize;
-        const newFits = fitsData.slice(startIndex, endIndex);
-        
-        if (newFits.length > 0) {
-          setDisplayedFits(prev => [...prev, ...newFits]);
-          setLastVisibleFit(newFits[newFits.length - 1]);
-          setHasMoreFits(endIndex < fitsData.length);
-        } else {
-          setHasMoreFits(false);
-        }
+        // Load more fits - this will be handled by loadMoreFits function
+        // which now works with client-side filtering
+        setLoadingMore(false);
       } else {
-        // Initial load
-        const initialFits = fitsData.slice(0, pageSize);
-        console.log(`🔄 HomeScreen: Setting ${initialFits.length} fits to displayedFits`);
+        // Initial load - apply current filter to all fits
+        let filteredFits;
+        
+        if (selectedGroup === 'all') {
+          filteredFits = fitsData;
+        } else {
+          filteredFits = fitsData.filter(fit => 
+            fit.groupIds && fit.groupIds.includes(selectedGroup)
+          );
+        }
+        
+        const initialFits = filteredFits.slice(0, pageSize);
+        console.log(`🔄 HomeScreen: Setting ${initialFits.length} fits to displayedFits (filtered from ${fitsData.length} total)`);
         setDisplayedFits(initialFits);
         setLastVisibleFit(initialFits[initialFits.length - 1] || null);
-        setHasMoreFits(fitsData.length > pageSize);
+        setHasMoreFits(filteredFits.length > pageSize);
         
         // Scroll to top if this was a force refresh (new post)
         if (forceRefresh && flatListRef.current) {
@@ -551,13 +550,70 @@ export default function HomeScreen({ navigation, route }) {
   const handleGroupSelect = (group) => {
     // Handle both string IDs and group objects
     const groupId = typeof group === 'string' ? group : group.id;
+    
+    // Don't do anything if selecting the same group
+    if (selectedGroup === groupId) {
+      return;
+    }
+    
     setSelectedGroup(groupId);
-    invalidateCache(); // Invalidate cache when group changes
+    
+    // Apply client-side filtering for instant response
+    if (allFits.length > 0) {
+      let filteredFits;
+      
+      if (groupId === 'all') {
+        // Show all fits from user's groups
+        filteredFits = allFits;
+      } else {
+        // Filter fits for the selected group
+        filteredFits = allFits.filter(fit => 
+          fit.groupIds && fit.groupIds.includes(groupId)
+        );
+      }
+      
+      // Update displayed fits with pagination
+      const initialFits = filteredFits.slice(0, pageSize);
+      setDisplayedFits(initialFits);
+      setLastVisibleFit(initialFits[initialFits.length - 1] || null);
+      setHasMoreFits(filteredFits.length > pageSize);
+      
+      // Update stats for the filtered data
+      calculateStats(filteredFits);
+    }
+    
+    // Only invalidate cache if we don't have data yet
+    if (allFits.length === 0) {
+      invalidateCache();
+      fetchTodaysFits(false, false);
+    }
   };
 
   const loadMoreFits = () => {
     if (!loadingMore && hasMoreFits) {
-      fetchTodaysFits(true);
+      // Get the current filtered fits based on selected group
+      let filteredFits;
+      
+      if (selectedGroup === 'all') {
+        filteredFits = allFits;
+      } else {
+        filteredFits = allFits.filter(fit => 
+          fit.groupIds && fit.groupIds.includes(selectedGroup)
+        );
+      }
+      
+      // Load more from the filtered data
+      const startIndex = displayedFits.length;
+      const endIndex = startIndex + pageSize;
+      const newFits = filteredFits.slice(startIndex, endIndex);
+      
+      if (newFits.length > 0) {
+        setDisplayedFits(prev => [...prev, ...newFits]);
+        setLastVisibleFit(newFits[newFits.length - 1]);
+        setHasMoreFits(endIndex < filteredFits.length);
+      } else {
+        setHasMoreFits(false);
+      }
     }
   };
 
@@ -638,6 +694,10 @@ export default function HomeScreen({ navigation, route }) {
         );
     }
 
+    const handlePress = () => {
+      handleGroupSelect(group);
+    };
+
     return (
       <TouchableOpacity
         key={key || group}
@@ -645,7 +705,7 @@ export default function HomeScreen({ navigation, route }) {
           styles.groupButton,
           isSelected && styles.groupButtonSelected
         ]}
-        onPress={() => handleGroupSelect(group)}
+        onPress={handlePress}
         activeOpacity={0.8}
       >
         <View style={styles.groupButtonContent}>

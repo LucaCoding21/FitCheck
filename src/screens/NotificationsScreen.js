@@ -174,14 +174,27 @@ export default function NotificationsScreen({ isVisible, onClose, onNavigateToFi
 
   // Swipe gesture functionality
   const onGestureEvent = Animated.event(
-    [{ nativeEvent: { translationX: slideAnim } }],
+    [
+      {
+        nativeEvent: {
+          translationX: (x) => {
+            // Only allow positive (rightward) translation
+            if (x > 0) {
+              slideAnim.setValue(x);
+            } else {
+              slideAnim.setValue(0);
+            }
+          },
+        },
+      },
+    ],
     { useNativeDriver: true }
   );
 
   const onHandlerStateChange = (event) => {
     if (event.nativeEvent.state === State.END) {
       const { translationX } = event.nativeEvent;
-      
+      // Only allow closing if swiped right
       if (translationX > width * 0.3) {
         // Swipe right - close notifications
         hideNotifications();
@@ -302,6 +315,7 @@ export default function NotificationsScreen({ isVisible, onClose, onNavigateToFi
       <PanGestureHandler
         onGestureEvent={onGestureEvent}
         onHandlerStateChange={onHandlerStateChange}
+        activeOffsetX={0} // Only allow rightward swipes
       >
         <Animated.View
           style={[

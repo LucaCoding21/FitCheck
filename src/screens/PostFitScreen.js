@@ -63,51 +63,36 @@ export default function PostFitScreen({ navigation, route }) {
   const hasMoreTags = availableTags.length > 6;
 
   useEffect(() => {
-    // Smooth entrance animation for overlay
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 150, // Even faster for smoother feel
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 1,
-        duration: 150, // Even faster for smoother feel
-        useNativeDriver: true,
-      }),
-    ]).start();
-    
-    // Defer heavy operations to prevent lag during animation
-    const timer = setTimeout(() => {
-      if (user && user.uid) {
-        fetchUserProfile();
-        fetchUserGroups();
-      }
-    }, 150); // Reduced delay for faster loading
-    
-    return () => clearTimeout(timer);
+    // Start heavy operations immediately - no need to defer
+    if (user && user.uid) {
+      fetchUserProfile();
+      fetchUserGroups();
+    }
   }, [user]);
+
+  // Entrance animation - this was missing!
+  useEffect(() => {
+    if (image) {
+      // Animate in from right with fade
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [image, fadeAnim, slideAnim]);
 
   useEffect(() => {
     if (userGroups.length > 0) {
-      // Defer group members fetch to reduce initial load time
-      const timer = setTimeout(() => {
-        fetchGroupMembers();
-      }, 300); // Reduced delay for faster loading
-      
-      // Track timeout for cleanup
-      if (!window.postFitTimeouts) {
-        window.postFitTimeouts = [];
-      }
-      window.postFitTimeouts.push(timer);
-      
-      return () => {
-        clearTimeout(timer);
-        const index = window.postFitTimeouts?.indexOf(timer);
-        if (index > -1) {
-          window.postFitTimeouts.splice(index, 1);
-        }
-      };
+      // Simple, immediate fetch - no deferring
+      fetchGroupMembers();
     }
   }, [userGroups]);
 
@@ -417,7 +402,7 @@ export default function PostFitScreen({ navigation, route }) {
           useNativeDriver: true,
         }),
       ]).start(() => {
-        // Simply close the overlay since we're already on Home tab in the background
+        // Close the overlay
         if (navigation.goBack) {
           navigation.goBack();
         }
@@ -516,8 +501,10 @@ export default function PostFitScreen({ navigation, route }) {
               useNativeDriver: true,
             }),
           ]).start(() => {
-            // Navigate back after animation completes
-            navigation.goBack();
+            // Close the overlay
+            if (navigation.goBack) {
+              navigation.goBack();
+            }
           });
         }}
         style={styles.backButton}
@@ -584,8 +571,10 @@ export default function PostFitScreen({ navigation, route }) {
                 onPress={handleOpenCustomTagModal}
                 activeOpacity={0.8}
               >
-                <Ionicons name="add-circle" size={20} color="#B5483D" />
-                <Text style={styles.addTagText}>Add Custom Tag</Text>
+                <View style={styles.addTagButtonContent}>
+                  <Ionicons name="add-circle" size={18} color="#B5483D" />
+                  <Text style={styles.addTagText}>Add Custom Tag</Text>
+                </View>
               </TouchableOpacity>
             </View>
             
@@ -716,9 +705,10 @@ const styles = StyleSheet.create({
   },
   sectionLabel: {
     color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '500',
+    fontSize: 18,
+    fontWeight: '600',
     marginBottom: 8,
+    letterSpacing: 0.5,
   },
   captionInputContainer: {
     backgroundColor: '#333333',
@@ -741,7 +731,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 16,
+    paddingHorizontal: 4,
   },
   tagsContainer: {
     flexDirection: 'row',
@@ -770,14 +761,24 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   addTagButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'transparent',
+    backgroundColor: 'rgba(181, 72, 61, 0.1)',
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 8,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: '#B5483D',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  addTagButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   addTagText: {
     color: '#B5483D',

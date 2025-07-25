@@ -83,8 +83,8 @@ const OnboardingScreen = ({ navigation }) => {
   }, []);
 
   const handleGetStarted = () => {
-    // Navigate to signup screen
-    navigation.navigate('SignUp');
+    // Navigate to first onboarding screen
+    navigation.navigate('OnboardingScreen1');
   };
 
   const handleSignIn = () => {

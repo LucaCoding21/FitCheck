@@ -826,6 +826,215 @@ _This implementation successfully creates an engaging, celebratory archive that 
 
 ## 📝 **LATEST UPDATES**
 
+### **Settings Screen Implementation (Latest)**
+
+- **Feature:** Created comprehensive Settings screen with notification permissions and App Store requirements
+- **Implementation:**
+  - **New SettingsScreen:** Complete settings interface with organized sections
+  - **Navigation Integration:** Added Settings screen to MainNavigator stack
+  - **Settings Sections:**
+    - **Notifications:** Push notifications, comments, ratings, group invites
+    - **Privacy & Security:** Privacy policy, terms of service, data & storage, account visibility
+    - **App Information:** About FitCheck, help & support, rate app, share app
+    - **Legal:** Open source licenses, data processing information
+    - **Account:** Sign out functionality
+  - **Coming Soon Alerts:** All settings items show "Coming Soon" alerts for future implementation
+  - **Consistent Design:** Matches app's dark theme with proper styling and icons
+- **User Experience:**
+  - Intuitive navigation from Profile screen settings button
+  - Clear section organization with descriptive subtitles
+  - Smooth slide animation from right
+  - Proper back navigation with gesture support
+  - Professional appearance that meets App Store requirements
+- **Technical Details:**
+  - Reusable SettingsItem and SettingsSection components
+  - Proper navigation stack integration
+  - AuthContext integration for sign out functionality
+  - Consistent styling with app's design system
+  - Proper error handling for sign out process
+- **Benefits:** Provides all necessary settings sections for App Store approval while maintaining consistent UX
+
+### **ProfileScreen Logout Button Fix & Enhancement (Latest)**
+
+### **Caption Input UX Improvements & Custom Tag Button Redesign (Latest)**
+
+### **Instagram-Like Caption Input Transitions (Latest)**
+
+### **Profile Picture Editing Feature (Latest)**
+
+### **Toast System Setup (Latest)**
+
+- **Issue:** Toast notifications weren't appearing in ProfileScreen
+- **Root Cause:** Toast component wasn't rendered at the app root level
+- **Solution:**
+  - Added Toast component to App.js with custom configuration
+  - Configured Toast styling to match app's dark theme
+  - Added success and error toast types with proper icons
+  - Used app's color palette for consistent styling
+- **Implementation:**
+  - Imported Toast, BaseToast, ErrorToast from react-native-toast-message
+  - Added custom toastConfig with dark theme styling
+  - Rendered Toast component in App.js with config prop
+  - Used Ionicons for consistent iconography
+- **Benefits:** Consistent toast notifications across the entire app
+
+### **Enhanced Onboarding Flow - Two New Screens (Latest)**
+
+- **Feature:** Added two new onboarding screens to better explain FitCheck's concept and motivate users
+- **Flow:** Original Onboarding → OnboardingScreen1 → OnboardingScreen2 → SignUp
+- **OnboardingScreen1:** "Daily Style Battles" - Explains core concept, private groups, anonymous ratings, daily winners
+- **OnboardingScreen2:** "Why Post Daily?" - Motivates users with benefits like style accountability, Hall of Flame, honest feedback, daily ritual
+- **Design:** Beautiful UI with animated backgrounds, consistent with app's dark theme and color palette
+- **Navigation:** Smooth transitions with fade and slide animations
+- **User Experience:** Clear progression with dot indicators and intuitive navigation buttons
+- **Implementation:**
+  - Created OnboardingScreen1.js and OnboardingScreen2.js
+  - Updated App.js navigation stack to include new screens
+  - Modified original OnboardingScreen to navigate to OnboardingScreen1
+  - Used consistent design patterns and animations throughout
+- **Benefits:** Better user understanding of app concept and increased motivation to participate
+
+### **UX Improvement: Instant Filter Switching Without Page Refreshes (Latest)**
+
+### **UX Improvement: Instant Filter Switching Without Page Refreshes (Latest)**
+
+- **Issue:** Switching between group filters in HomeScreen caused full page refreshes with loading states, creating poor user experience
+- **Root Cause:** Each filter change invalidated cache and triggered `fetchTodaysFits()`, causing loading skeletons and delays
+- **Solution:** Implemented simple client-side filtering for instant filter switching without animations
+- **Implementation:**
+  - Modified `handleGroupSelect()` to use client-side filtering instead of cache invalidation
+  - Updated `loadMoreFits()` to work with filtered data locally
+  - Removed all animations and haptic feedback for MVP simplicity
+  - Maintained pagination and stats calculation for filtered data
+- **Performance Improvements:**
+  - Instant filter switching without network requests
+  - No loading states or delays when switching filters
+  - Maintained all existing functionality (pagination, stats, etc.)
+- **User Experience:**
+  - No more loading states when switching filters
+  - Instant response to filter changes
+  - Simple, clean transitions without fancy animations
+  - Better perceived performance and app responsiveness
+- **Testing:** Verify filter switching is instant across all groups
+
+### **Critical Bug Fix: PostFitScreen Not Showing After Photo Selection (Latest)**
+
+- **Issue:** After selecting a photo in CustomPhotoPicker and clicking "Next", PostFitScreen wasn't appearing and users were returned to home
+- **Root Cause:** PostFitScreen was missing the entrance animation setup. The `fadeAnim` and `slideAnim` were initialized to 0 but never animated to 1, making the screen invisible and off-screen
+- **Solution:** Added missing entrance animation useEffect that triggers when image is available
+- **Implementation:**
+  - Added useEffect that animates fadeAnim from 0 to 1 and slideAnim from 0 to 1
+  - Animation duration: 200ms for smooth entrance
+  - Triggers when image prop is available
+- **Impact:** PostFitScreen now properly slides in from the right with fade animation
+- **Testing:** Verify photo selection → PostFitScreen transition works correctly
+
+### **Critical Bug Fix: (+) Button Navigation to Home Tab (Latest)**
+
+- **Issue:** When users clicked the (+) button, the app wasn't navigating to the Home tab in the background before showing the CustomPhotoPicker overlay
+- **Root Cause:** The (+) button was only calling `setShowPhotoPicker(true)` without navigating to the Home tab first
+- **Solution:** Added delayed `navigation.navigate('Home')` to happen behind the CustomPhotoPicker overlay
+- **Implementation:**
+  - Modified CustomTabBar PostFit button onPress handler
+  - Show CustomPhotoPicker overlay immediately for instant response
+  - Added 1-second delay before `navigation.navigate('Home')` to happen in background
+  - Users don't see the navigation transition
+- **Impact:** Users now always return to Home tab when clicking (+) button, but the navigation is invisible behind the overlay
+- **Testing:** Verify (+) button works from any tab and navigation happens seamlessly behind overlay
+
+### **Navigation Flow Optimization: Simplified Photo Picker to PostFit (Latest)**
+
+- **Issue:** PostFlowScreen was causing white screen and unnecessary complexity
+- **Root Cause:** Added unnecessary intermediate screen (PostFlowScreen) that wasn't needed
+- **Solution:** Reverted to original overlay approach with performance optimizations
+  1. Removed PostFlowScreen entirely from navigation stack
+  2. Restored photo picker overlay in MainTabs component
+  3. Optimized animations to reduce lag (removed fade animations)
+  4. Simplified transition with minimal 100ms delay for smooth UX
+  5. Direct CustomPhotoPicker → PostFitScreen flow
+- **Implementation:**
+  - CustomPhotoPicker shows as overlay when (+) button is tapped
+  - Direct transition to PostFitScreen when photo is selected
+  - PostFitScreen closes overlay when posting is complete
+  - No intermediate screens or complex navigation
+- **Performance Improvements:**
+  - Removed unnecessary fade animations that caused lag
+  - Direct transitions without complex animation coordination
+  - Minimal delay for smooth overlay transitions
+  - Faster photo selection and posting flow
+- **Impact:** Restored original working flow with better performance
+- **Testing:** Verify photo selection and posting works smoothly without lag
+
+### **Critical Bug Fix: GroupDetailsScreen Crash (Latest)**
+
+- **Issue:** GroupDetailsScreen was causing the entire app to crash with EXC_CRASH (SIGABRT) when navigating to it
+- **Root Cause:**
+  1. Invalid `gestureDirection: 'horizontal-inverted'` configuration in MainNavigator.js (not supported by @react-navigation/native-stack)
+  2. Invalid `navigation.replace()` calls to non-existent screens in navigation stack
+  3. Early return with navigation call causing React Native screen parsing errors
+- **Solution:**
+  1. Fixed navigation configuration: Changed `gestureDirection: 'horizontal-inverted'` to `gestureDirection: 'horizontal'` with `gestureEnabled: true`
+  2. Replaced invalid `navigation.replace()` calls with `navigation.goBack()`
+  3. Fixed early return issue by showing loading spinner instead of calling navigation.replace and returning null
+  4. Added missing ActivityIndicator import
+- **Impact:** GroupDetailsScreen now loads without crashing the app
+- **Testing:** Verify GroupDetailsScreen navigation works in both authenticated and non-authenticated states
+
+### **CustomPhotoPicker to PostFitScreen Flow - Balanced Performance (Latest)**
+
+- **Issue:** CustomPhotoPicker to PostFitScreen transition was either too laggy (complex animations) or too jarring (instant transitions)
+- **Root Cause:** Need to balance smooth user experience with MVP performance requirements
+- **Solution - Balanced Approach:**
+  - **PostFitScreen Optimizations:**
+    - Simple fade in animation (200ms) - smooth but not laggy
+    - Immediate data fetching - no deferred operations
+    - Single animation using native driver for performance
+  - **CustomPhotoPicker Optimizations:**
+    - Simple fade out animation (200ms) before transition
+    - Simple fade in animation (200ms) on entrance
+    - Modal slide animation for natural feel
+    - Maintained high image quality with "normal" priority
+  - **MainNavigator Optimizations:**
+    - Small 50ms delay for smooth overlay transition
+    - Simple timing without complex coordination
+- **Performance Improvements:**
+  - Smooth, natural transitions without lag
+  - Single animations using native driver
+  - No complex animation coordination
+  - Balanced user experience for MVP
+
+### **Navigation Performance Upgrade - Native Stack + Fade Transitions (Latest)**
+
+- **Issue:** Screen transitions between ProfileScreen and FitDetailsScreen were choppy and not smooth
+- **Root Cause:** Using JS-based stack navigator (`@react-navigation/stack`) instead of native stack (`@react-navigation/native-stack`)
+- **Solution:**
+  - Switched from `@react-navigation/stack` to `@react-navigation/native-stack`
+  - Added smooth fade transitions for FitDetailsScreen and HallOfFlameScreen
+  - Enabled gesture navigation for better user experience
+  - Maintained all existing functionality and optimizations
+- **Performance Improvements:**
+  - Buttery smooth screen transitions using native hardware acceleration
+  - Eliminated choppy animations when navigating between screens
+  - Better gesture handling and user experience
+  - No impact on HomeScreen performance (stays exactly as smooth)
+
+### **ProfileScreen Performance Fix - Navigation Lag (Latest)**
+
+- **Issue:** ProfileScreen was very laggy when navigating back from FitDetailsScreen
+- **Root Cause:** ProfileScreen lacked proper focus listeners and data refresh mechanisms, causing it to re-fetch all data inefficiently when returning from other screens
+- **Solution:**
+  - Added optimized focus listener with debouncing (1-second cooldown) to prevent excessive refreshes
+  - Implemented pull-to-refresh functionality for better user experience
+  - Memoized render functions (renderFitItem, renderEmptyState, renderContent) to prevent unnecessary re-renders
+  - Memoized event handlers (handleSignOut, handleEditProfile) to prevent function recreation
+  - Added forceRefresh parameter to fetchFits for more efficient data updates
+  - Enhanced loading states and error handling
+- **Performance Improvements:**
+  - Eliminated lag when exiting FitDetailsScreen
+  - Reduced unnecessary re-renders and data fetches
+  - Smoother navigation transitions
+  - Better user experience with pull-to-refresh
+
 ### **Removed Trophy Button from Leaderboard Screen (Latest)**
 
 - **Change:** Removed the trophy button from the LeaderboardScreen header
@@ -888,6 +1097,14 @@ _This implementation successfully creates an engaging, celebratory archive that 
 - Added 'date' field (YYYY-MM-DD) to fitData in PostFitScreen.js when posting a fit
 - Ensures all new fits have the required 'date' property for winner calculation and group-specific logic
 - Fixes bug where PinnedWinnerCard and winner logic could not function due to missing 'date' field
+
+### [FIX] Restrict Notification Screen Swipe Direction (Latest)
+
+- **Change:** Notifications screen now only allows left-to-right (swipe right) gesture to close; right-to-left (swipe left) is disabled.
+- **Implementation:**
+  - Updated PanGestureHandler logic in NotificationsScreen.js to ignore negative (leftward) translationX values.
+  - Panel cannot be swiped left; only rightward swipes are recognized for closing.
+- **User Experience:** Prevents accidental panel dismissal from the wrong direction and matches expected gesture behavior.
 
 ---
 

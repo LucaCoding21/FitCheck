@@ -12,6 +12,7 @@ import {
   ScrollView,
   Modal,
   TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -81,11 +82,12 @@ const toastConfig = {
 export default function GroupDetailsScreen({ navigation, route }) {
   const { user } = useAuth();
   if (!user) {
-    // Option 1: Show a loading spinner or fallback UI
-    // return <LoadingScreen />;
-    // Option 2: Redirect to sign-in screen
-    navigation.replace('SignInScreen');
-    return null;
+    // Show loading while auth is being checked
+    return (
+      <View style={{ flex: 1, backgroundColor: '#1a1a1a', justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#B5483D" />
+      </View>
+    );
   }
   const { groupId, groupName } = route.params;
   
@@ -337,8 +339,8 @@ export default function GroupDetailsScreen({ navigation, route }) {
         }
       }
 
-      // Navigate to Main screen with the newly created group selected
-      navigation.replace("Main", { selectedGroup: groupId });
+      // Navigate back to Groups screen
+      navigation.goBack();
     } catch (error) {
       console.error('Error updating group:', error);
       Alert.alert('Error', 'Failed to update group. Please try again.');
@@ -529,7 +531,7 @@ export default function GroupDetailsScreen({ navigation, route }) {
           }
 
           // Navigate back to Groups screen
-          navigation.replace("MainTabs", { screen: "Groups" });
+          navigation.goBack();
           
         } catch (error) {
           console.error('Error leaving group:', error);
@@ -574,7 +576,7 @@ export default function GroupDetailsScreen({ navigation, route }) {
         >
           <TouchableOpacity
             style={styles.backButton}
-            onPress={isEditMode ? handleCancelEdit : () => navigation.navigate("MainTabs", { screen: "Groups" })}
+            onPress={isEditMode ? handleCancelEdit : () => navigation.goBack()}
             activeOpacity={0.7}
           >
             <Ionicons name={isEditMode ? "close" : "chevron-back"} size={24} color={theme.colors.text} />
