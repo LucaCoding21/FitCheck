@@ -2,18 +2,54 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    
+    // Users can only read/write their own data
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
 
-    // This rule allows anyone with your Firestore database reference to view, edit,
-    // and delete all data in your Firestore database. It is useful for getting
-    // started, but it is configured to expire after 30 days because it
-    // leaves your app open to attackers. At that time, all client
-    // requests to your Firestore database will be denied.
-    //
-    // Make sure to write security rules for your app before that time, or else
-    // all client requests to your Firestore database will be denied until you Update
-    // your rules
-    match /{document=**} {
-      allow read, write: if request.time < timestamp.date(2025, 8, 14);
+    // Group members can read/write group data
+    match /groups/{groupId} {
+      allow read, write: if request.auth != null &&
+        request.auth.uid in resource.data.members;
+      
+      // Daily winners subcollection - group members can read
+      match /dailyWinners/{date} {
+        allow read: if request.auth != null &&
+          request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.members;
+        // Only Cloud Functions can write to dailyWinners
+        allow write: if false;
+      }
+    }
+
+    // Fits visible to group members only
+    match /fits/{fitId} {
+      allow read, write: if request.auth != null &&
+        request.auth.uid in get(/databases/$(database)/documents/groups/$(resource.data.groupIds[0])).data.members;
+    }
+
+    // Ratings by group members only
+    match /ratings/{ratingId} {
+      allow read, write: if request.auth != null &&
+        request.auth.uid in get(/databases/$(database)/documents/groups/$(resource.data.groupId)).data.members;
+    }
+
+    // Comments by group members only
+    match /comments/{commentId} {
+      allow read, write: if request.auth != null &&
+        request.auth.uid in get(/databases/$(database)/documents/groups/$(resource.data.groupId)).data.members;
+    }
+
+    // Notifications user-specific
+    match /notifications/{notificationId} {
+      allow read, write: if request.auth != null &&
+        request.auth.uid == resource.data.userId;
+    }
+
+    // Legacy dailyWinners collection - keep for migration period
+    match /dailyWinners/{docId} {
+      allow read, write: if request.auth != null &&
+        request.auth.uid == resource.data.userId;
     }
   }
 }

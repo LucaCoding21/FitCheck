@@ -14,7 +14,7 @@ import { theme } from '../styles/theme';
 import OptimizedImage from '../components/OptimizedImage';
 import PinnedWinnerCard from '../components/PinnedWinnerCard';
 import Toast from 'react-native-toast-message';
-import { calculateAndSaveAllWinnersForUser } from '../services/DailyWinnerService';
+// Removed deprecated winner calculation import - now handled by Cloud Functions
 
 const { width, height } = Dimensions.get('window');
 
@@ -141,19 +141,8 @@ export default function HomeScreen({ navigation, route }) {
       fetchUnreadNotificationsCount();
     }, 3000); // Much longer delay to prevent blocking transitions
     
-    // Defer daily winner calculation - even longer delay to prevent blocking
-    const winnerTimer = setTimeout(() => {
-      if (userGroups.length > 0 && user?.uid) {
-        console.log('🏆 HomeScreen: Triggering daily winner calculation...');
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        calculateAndSaveAllWinnersForUser(yesterday, userGroups, user.uid).then(result => {
-          console.log('🏆 HomeScreen: Winner calculation result:', result);
-        }).catch(error => {
-          console.error('🏆 HomeScreen: Winner calculation error:', error);
-        });
-      }
-    }, 5000); // Long delay to ensure it doesn't block UI
+    // Daily winner calculation now handled automatically by Cloud Functions
+    // No manual calculation needed
     
     // Initialize countdown
     setCountdownText(calculateTimeUntilMidnight());
@@ -167,7 +156,7 @@ export default function HomeScreen({ navigation, route }) {
       clearInterval(countdownInterval);
       clearTimeout(profileTimer);
       clearTimeout(notificationTimer);
-      clearTimeout(winnerTimer);
+      // No winner timer to clear - handled by Cloud Functions
     };
   }, []);
 
@@ -211,7 +200,6 @@ export default function HomeScreen({ navigation, route }) {
     if (userGroups.length > 0) {
       // Check if we have valid cached data first - immediate check
       if (shouldUseCache()) {
-        console.log('Using cached fits data on initial load');
         // Update all states immediately to prevent loading delay
         setAllFits(cachedFits);
         const initialFits = cachedFits.slice(0, pageSize);
@@ -288,25 +276,19 @@ export default function HomeScreen({ navigation, route }) {
     return () => clearInterval(interval);
   }, [userGroups]); // Run on mount AND when userGroups changes
 
-  // Midnight reset and winner calculation
+  // Midnight reset - winners now calculated automatically by Cloud Functions
   useEffect(() => {
     const checkForMidnightReset = () => {
       const now = new Date();
-      if (now.getHours() === 0 && now.getMinutes() === 0) {
-        // It's midnight - calculate yesterday's winners
-        if (userGroups.length > 0 && user?.uid) {
-          console.log('🕛 Midnight detected - triggering winner calculation...');
-          const yesterday = new Date();
-          yesterday.setDate(yesterday.getDate() - 1);
-          calculateAndSaveAllWinnersForUser(yesterday, userGroups, user.uid).then(result => {
-            console.log('🏆 Midnight winner calculation result:', result);
-            // Invalidate cache to refresh the feed
-            invalidateCache();
-            // Refresh the feed to show new day
-            fetchTodaysFits(false, true);
-          }).catch(error => {
-            console.error('❌ Midnight winner calculation error:', error);
-          });
+      // Check if it's between 12:00 AM and 12:05 AM to catch midnight
+      if (now.getHours() === 0 && now.getMinutes() < 5) {
+        // It's midnight - refresh feed to show new day
+        if (userGroups.length > 0) {
+          console.log('🕛 Midnight detected - refreshing feed for new day...');
+          // Invalidate cache to refresh the feed
+          invalidateCache();
+          // Refresh the feed to show new day
+          fetchTodaysFits(false, true);
         }
       }
     };
@@ -314,7 +296,7 @@ export default function HomeScreen({ navigation, route }) {
     // Check every minute for midnight
     const interval = setInterval(checkForMidnightReset, 60000);
     return () => clearInterval(interval);
-  }, [userGroups, user?.uid]);
+  }, [userGroups]);
 
   // Remove the complex toast and scroll handling that was causing lag
   // The toast is now handled directly in PostFitScreen
@@ -441,7 +423,6 @@ export default function HomeScreen({ navigation, route }) {
       );
       
       const snapshot = await getDocs(fitsQuery);
-      console.log(`🔄 HomeScreen: Fetched ${snapshot.docs.length} fits from Firestore`);
       
       let fitsData = snapshot.docs.map(doc => ({
         id: doc.id,
@@ -477,7 +458,6 @@ export default function HomeScreen({ navigation, route }) {
         }
         
         const initialFits = filteredFits.slice(0, pageSize);
-        console.log(`🔄 HomeScreen: Setting ${initialFits.length} fits to displayedFits (filtered from ${fitsData.length} total)`);
         setDisplayedFits(initialFits);
         setLastVisibleFit(initialFits[initialFits.length - 1] || null);
         setHasMoreFits(filteredFits.length > pageSize);
@@ -675,6 +655,9 @@ export default function HomeScreen({ navigation, route }) {
     // This will be handled by the PinnedWinnerCard component
   }, []);
 
+  // Manual trigger for testing winner calculation
+
+
 
 
   const renderGroupButton = (group, isSelected, key) => {
@@ -742,8 +725,9 @@ export default function HomeScreen({ navigation, route }) {
       onPress={handlePinnedWinnerPress}
       navigation={navigation}
       selectedGroup={selectedGroup}
+      userGroups={userGroups}
     />
-  ), [selectedGroup]); // Only depend on selectedGroup, not navigation // Re-create when navigation or selectedGroup changes
+  ), [selectedGroup, userGroups]); // Depend on selectedGroup and userGroups
 
   return (
     <View style={styles.container}>
@@ -960,6 +944,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+
 
   notificationButton: {
     width: 30,

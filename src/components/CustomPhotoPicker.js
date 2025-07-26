@@ -494,10 +494,14 @@ const styles = StyleSheet.create({
   },
   previewContainer: {
     aspectRatio: 3/4,
-    marginHorizontal: 4,
+    marginHorizontal: 20,
+    marginVertical: 10,
     borderRadius: 12,
     overflow: 'hidden',
     backgroundColor: '#2a2a2a',
+    maxHeight: height * 0.4, // Limit height to 40% of screen
+    alignSelf: 'center',
+    width: 'auto',
   },
   previewImage: {
     width: '100%',

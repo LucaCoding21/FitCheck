@@ -81,11 +81,17 @@ export default function WinnerArchiveCard({
         {/* Fire Glow Overlay */}
         <View style={[styles.fireGlow, styles[`fireGlow${fireIntensity}`]]} />
 
-        {/* Rating Badge */}
-        <View style={styles.ratingBadge}>
-          <Ionicons name="star" size={12} color="#FFD700" />
-          <Text style={styles.ratingText}>{rating.toFixed(1)}</Text>
-        </View>
+        {/* Rating Badge or "You" Badge */}
+        {isCurrentUser ? (
+          <View style={styles.youBadge}>
+            <Text style={styles.youText}>You</Text>
+          </View>
+        ) : (
+          <View style={styles.ratingBadge}>
+            <Ionicons name="star" size={12} color="#FFD700" />
+            <Text style={styles.ratingText}>{rating.toFixed(1)}</Text>
+          </View>
+        )}
 
         {/* Tag Overlay */}
         {winnerData.tag && (
@@ -317,5 +323,22 @@ const styles = StyleSheet.create({
     color: theme.colors.textSecondary,
     fontStyle: 'italic',
     lineHeight: 16,
+  },
+  youBadge: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    backgroundColor: theme.colors.secondary,
+    borderRadius: 12,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  youText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
 }); 

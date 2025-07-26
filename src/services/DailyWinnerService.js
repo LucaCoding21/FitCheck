@@ -12,205 +12,15 @@ const getRatingThreshold = (groupSize) => {
 // Helper: Get date key in YYYY-MM-DD format
 const getDateKey = (date) => date.toISOString().split('T')[0];
 
-// Helper: Generate winner doc key
-const getWinnerKey = (userId, groupId, dateKey) => `${userId}_${groupId}_${dateKey}`;
-
 // Helper: Get today's date in YYYY-MM-DD format
 const getTodayKey = () => getDateKey(new Date());
 
 // ---
-// Calculate and save daily winner for a specific group for a user
-export const calculateAndSaveGroupWinner = async (date, group, userId) => {
-  try {
-    if (!userId || !group?.id) throw new Error('User ID and group required');
-    const dateKey = getDateKey(date);
-    const winnerKey = getWinnerKey(userId, group.id, dateKey);
-    
-    // Check if winner already exists
-    const existingDoc = await getDoc(doc(db, 'dailyWinners', winnerKey));
-    if (existingDoc.exists()) {
-      return existingDoc.data();
-    }
-
-    // Fetch fits for this group and date
-    // Updated to handle groupIds array structure
-    const fitsQuery = query(
-      collection(db, 'fits'),
-      where('groupIds', 'array-contains', group.id),
-      where('date', '==', dateKey)
-    );
-    const snapshot = await getDocs(fitsQuery);
-    const fits = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    
-    // Filter by rating threshold
-    const threshold = getRatingThreshold(group.memberCount || 1);
-    const eligibleFits = fits.filter(fit => (fit.ratingCount || 0) >= threshold);
-    
-    if (!eligibleFits.length) {
-      return null;
-    }
-    
-    // Sort with tie-breaking logic:
-    // 1. Primary: Average rating (highest first)
-    // 2. Secondary: Number of ratings (more ratings wins)
-    // 3. Tertiary: Posting time (earlier post wins)
-    const sorted = eligibleFits.sort((a, b) => {
-      const aRating = a.fairRating || 0;
-      const bRating = b.fairRating || 0;
-      const aCount = a.ratingCount || 0;
-      const bCount = b.ratingCount || 0;
-      const aTime = a.createdAt?.toMillis?.() || a.createdAt?.seconds || 0;
-      const bTime = b.createdAt?.toMillis?.() || b.createdAt?.seconds || 0;
-      
-      // Primary: Compare average ratings
-      if (aRating !== bRating) {
-        return bRating - aRating; // Higher rating wins
-      }
-      
-      // Secondary: If ratings are tied, compare rating counts
-      if (aCount !== bCount) {
-        return bCount - aCount; // More ratings wins
-      }
-      
-      // Tertiary: If rating counts are tied, compare posting times
-      return aTime - bTime; // Earlier post wins
-    });
-    
-    const winner = sorted[0];
-    if (!winner) return null;
-    
-    // Prepare winner data
-    const winnerData = {
-      userId,
-      groupId: group.id,
-      groupName: group.name,
-      date: dateKey,
-      winner: {
-        fitId: winner.id,
-        userId: winner.userId,
-        userName: winner.userName,
-        userProfileImageURL: winner.userProfileImageURL,
-        imageURL: winner.imageURL,
-        caption: winner.caption,
-        tag: winner.tag,
-        averageRating: winner.fairRating, // Map fairRating to averageRating for consistency
-        ratingCount: winner.ratingCount,
-        createdAt: winner.createdAt,
-      },
-      calculatedAt: serverTimestamp(),
-    };
-    await setDoc(doc(db, 'dailyWinners', winnerKey), winnerData);
-    return winnerData;
-  } catch (e) {
-    console.error('Error calculating group winner', e);
-    throw e;
-  }
-};
-
-// Calculate and save 'all' winner for a user (across all groups)
-export const calculateAndSaveAllWinner = async (date, userGroups, userId) => {
-  try {
-    if (!userId || !userGroups?.length) throw new Error('User ID and groups required');
-    const dateKey = getDateKey(date);
-    const winnerKey = getWinnerKey(userId, 'all', dateKey);
-    // Check if winner already exists
-    const existingDoc = await getDoc(doc(db, 'dailyWinners', winnerKey));
-    if (existingDoc.exists()) return existingDoc.data();
-    
-    // Fetch all fits for all groups for this date
-    let allFits = [];
-    for (const group of userGroups) {
-      // Updated to handle groupIds array structure
-      const fitsQuery = query(
-        collection(db, 'fits'),
-        where('groupIds', 'array-contains', group.id),
-        where('date', '==', dateKey)
-      );
-      const snapshot = await getDocs(fitsQuery);
-      const fits = snapshot.docs.map(doc => ({ 
-        id: doc.id, 
-        ...doc.data(), 
-        groupName: group.name, 
-        groupId: group.id, // Add groupId for compatibility
-        groupMemberCount: group.memberCount 
-      }));
-      allFits = allFits.concat(fits);
-    }
-    
-    // Filter by each fit's group threshold
-    const eligibleFits = allFits.filter(fit => {
-      const group = userGroups.find(g => g.id === fit.groupId);
-      const threshold = getRatingThreshold(group?.memberCount || 1);
-      return (fit.ratingCount || 0) >= threshold;
-    });
-    
-    if (!eligibleFits.length) return null;
-    
-    // Sort with tie-breaking logic:
-    // 1. Primary: Average rating (highest first)
-    // 2. Secondary: Number of ratings (more ratings wins)
-    // 3. Tertiary: Posting time (earlier post wins)
-    const sorted = eligibleFits.sort((a, b) => {
-      const aRating = a.fairRating || 0;
-      const bRating = b.fairRating || 0;
-      const aCount = a.ratingCount || 0;
-      const bCount = b.ratingCount || 0;
-      const aTime = a.createdAt?.toMillis?.() || a.createdAt?.seconds || 0;
-      const bTime = b.createdAt?.toMillis?.() || b.createdAt?.seconds || 0;
-      
-      // Primary: Compare average ratings
-      if (aRating !== bRating) {
-        return bRating - aRating; // Higher rating wins
-      }
-      
-      // Secondary: If ratings are tied, compare rating counts
-      if (aCount !== bCount) {
-        return bCount - aCount; // More ratings wins
-      }
-      
-      // Tertiary: If rating counts are tied, compare posting times
-      return aTime - bTime; // Earlier post wins
-    });
-    
-    const winner = sorted[0];
-    if (!winner) return null;
-    
-    // Prepare winner data
-    const winnerData = {
-      userId,
-      groupId: 'all',
-      groupName: 'All',
-      date: dateKey,
-      winner: {
-        fitId: winner.id,
-        userId: winner.userId,
-        userName: winner.userName,
-        userProfileImageURL: winner.userProfileImageURL,
-        imageURL: winner.imageURL,
-        caption: winner.caption,
-        tag: winner.tag,
-        averageRating: winner.fairRating, // Map fairRating to averageRating for consistency
-        ratingCount: winner.ratingCount,
-        groupId: winner.groupId,
-        groupName: winner.groupName,
-        createdAt: winner.createdAt,
-      },
-      calculatedAt: serverTimestamp(),
-    };
-    await setDoc(doc(db, 'dailyWinners', winnerKey), winnerData);
-    return winnerData;
-  } catch (e) {
-    console.error('Error calculating all winner', e);
-    throw e;
-  }
-};
-
-// Fetch winner for a specific group and date
-export const getGroupWinner = async (userId, groupId, date) => {
+// NEW: Fetch winner for a specific group and date from group subcollection
+export const getGroupWinner = async (groupId, date) => {
   try {
     const dateKey = getDateKey(date);
-    const winnerKey = getWinnerKey(userId, groupId, dateKey);
-    const docSnap = await getDoc(doc(db, 'dailyWinners', winnerKey));
+    const docSnap = await getDoc(doc(db, 'groups', groupId, 'dailyWinners', dateKey));
     return docSnap.exists() ? docSnap.data() : null;
   } catch (e) {
     console.error('Error fetching group winner', e);
@@ -218,36 +28,18 @@ export const getGroupWinner = async (userId, groupId, date) => {
   }
 };
 
-// Fetch 'all' winner for a user and date
-export const getAllWinner = async (userId, date) => {
-  try {
-    const dateKey = getDateKey(date);
-    const winnerKey = getWinnerKey(userId, 'all', dateKey);
-    const docSnap = await getDoc(doc(db, 'dailyWinners', winnerKey));
-    return docSnap.exists() ? docSnap.data() : null;
-  } catch (e) {
-    console.error('Error fetching all winner', e);
-    return null;
-  }
-};
-
-// Fetch winner for yesterday for a group or 'all'
-export const getYesterdayWinner = async (userId, groupId) => {
+// NEW: Fetch winner for yesterday for a group
+export const getYesterdayWinner = async (groupId) => {
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
-  if (groupId === 'all') {
-    return await getAllWinner(userId, yesterday);
-  }
-  return await getGroupWinner(userId, groupId, yesterday);
+  return await getGroupWinner(groupId, yesterday);
 };
 
-// Fetch winner history for a group (for Hall of Flame)
-export const getWinnerHistoryForGroup = async (userId, groupId, limitCount = 30) => {
+// NEW: Fetch winner history for a group (for Hall of Flame)
+export const getWinnerHistoryForGroup = async (groupId, limitCount = 30) => {
   try {
     const winnersQuery = query(
-      collection(db, 'dailyWinners'),
-      where('userId', '==', userId),
-      where('groupId', '==', groupId),
+      collection(db, 'groups', groupId, 'dailyWinners'),
       orderBy('date', 'desc')
     );
     const snapshot = await getDocs(winnersQuery);
@@ -259,14 +51,12 @@ export const getWinnerHistoryForGroup = async (userId, groupId, limitCount = 30)
 };
 
 // NEW: Fetch winner archive for a group (all historical winners before today)
-export const getWinnerArchiveForGroup = async (userId, groupId, limitCount = 50, offset = 0) => {
+export const getWinnerArchiveForGroup = async (groupId, limitCount = 50, offset = 0) => {
   try {
     const todayKey = getTodayKey();
     
     const winnersQuery = query(
-      collection(db, 'dailyWinners'),
-      where('userId', '==', userId),
-      where('groupId', '==', groupId),
+      collection(db, 'groups', groupId, 'dailyWinners'),
       where('date', '<', todayKey), // Only winners before today
       orderBy('date', 'desc'),
       limit(limitCount + offset)
@@ -284,14 +74,12 @@ export const getWinnerArchiveForGroup = async (userId, groupId, limitCount = 50,
 };
 
 // NEW: Get winner statistics for a group
-export const getWinnerStatsForGroup = async (userId, groupId) => {
+export const getWinnerStatsForGroup = async (groupId) => {
   try {
     const todayKey = getTodayKey();
     
     const winnersQuery = query(
-      collection(db, 'dailyWinners'),
-      where('userId', '==', userId),
-      where('groupId', '==', groupId),
+      collection(db, 'groups', groupId, 'dailyWinners'),
       where('date', '<', todayKey)
     );
     
@@ -305,14 +93,10 @@ export const getWinnerStatsForGroup = async (userId, groupId) => {
       ? winners.reduce((sum, w) => sum + (w.winner.averageRating || 0), 0) / winners.length 
       : 0;
     
-    // Get current user's wins
-    const currentUserWins = winners.filter(w => w.winner.userId === userId).length;
-    
     return {
       totalWins,
       uniqueWinners,
       averageRating: Math.round(averageRating * 10) / 10, // Round to 1 decimal
-      currentUserWins,
       totalDays: winners.length
     };
   } catch (e) {
@@ -321,7 +105,6 @@ export const getWinnerStatsForGroup = async (userId, groupId) => {
       totalWins: 0,
       uniqueWinners: 0,
       averageRating: 0,
-      currentUserWins: 0,
       totalDays: 0
     };
   }
@@ -333,9 +116,7 @@ export const getUserWinCount = async (userId, groupId) => {
     const todayKey = getTodayKey();
     
     const winnersQuery = query(
-      collection(db, 'dailyWinners'),
-      where('userId', '==', userId),
-      where('groupId', '==', groupId),
+      collection(db, 'groups', groupId, 'dailyWinners'),
       where('date', '<', todayKey)
     );
     
@@ -350,14 +131,12 @@ export const getUserWinCount = async (userId, groupId) => {
 };
 
 // NEW: Get top performers for a group
-export const getTopPerformersForGroup = async (userId, groupId, limitCount = 5) => {
+export const getTopPerformersForGroup = async (groupId, limitCount = 5) => {
   try {
     const todayKey = getTodayKey();
     
     const winnersQuery = query(
-      collection(db, 'dailyWinners'),
-      where('userId', '==', userId),
-      where('groupId', '==', groupId),
+      collection(db, 'groups', groupId, 'dailyWinners'),
       where('date', '<', todayKey)
     );
     
@@ -387,12 +166,133 @@ export const getTopPerformersForGroup = async (userId, groupId, limitCount = 5) 
   }
 };
 
-// Calculate and save all winners for a user for a given date (all groups + 'all')
-export const calculateAndSaveAllWinnersForUser = async (date, userGroups, userId) => {
-  // For each group
-  for (const group of userGroups) {
-    await calculateAndSaveGroupWinner(date, group, userId);
+// NEW: Get "All" winner by aggregating from user's groups
+export const getAllWinner = async (userGroups, date) => {
+  try {
+    if (!userGroups?.length) return null;
+    
+    const dateKey = getDateKey(date);
+    let allWinners = [];
+    
+    // Get winners from all user's groups for the specified date
+    for (const group of userGroups) {
+      const groupWinner = await getGroupWinner(group.id, date);
+      if (groupWinner) {
+        allWinners.push({
+          ...groupWinner,
+          groupName: group.name,
+          groupId: group.id
+        });
+      }
+    }
+    
+    if (allWinners.length === 0) return null;
+    
+    // Sort with tie-breaking logic (same as Cloud Function):
+    // 1. Primary: Average rating (highest first)
+    // 2. Secondary: Number of ratings (more ratings wins)
+    // 3. Tertiary: Posting time (earlier post wins)
+    const sorted = allWinners.sort((a, b) => {
+      const aRating = a.winner.averageRating || 0;
+      const bRating = b.winner.averageRating || 0;
+      const aCount = a.winner.ratingCount || 0;
+      const bCount = b.winner.ratingCount || 0;
+      const aTime = a.winner.createdAt?.toMillis?.() || a.winner.createdAt?.seconds || 0;
+      const bTime = b.winner.createdAt?.toMillis?.() || b.winner.createdAt?.seconds || 0;
+      
+      // Primary: Compare average ratings
+      if (aRating !== bRating) {
+        return bRating - aRating; // Higher rating wins
+      }
+      
+      // Secondary: If ratings are tied, compare rating counts
+      if (aCount !== bCount) {
+        return bCount - aCount; // More ratings wins
+      }
+      
+      // Tertiary: If rating counts are tied, compare posting times
+      return aTime - bTime; // Earlier post wins
+    });
+    
+    return sorted[0];
+  } catch (e) {
+    console.error('Error fetching all winner', e);
+    return null;
   }
-  // For 'all'
-  await calculateAndSaveAllWinner(date, userGroups, userId);
+};
+
+// NEW: Get "All" winner for yesterday
+export const getYesterdayAllWinner = async (userGroups) => {
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  return await getAllWinner(userGroups, yesterday);
+};
+
+// NEW: Get "All" winner history by aggregating from user's groups
+export const getAllWinnerHistory = async (userGroups, limitCount = 30) => {
+  try {
+    if (!userGroups?.length) return [];
+    
+    // Get all winners from all groups
+    let allWinners = [];
+    for (const group of userGroups) {
+      const groupWinners = await getWinnerHistoryForGroup(group.id, limitCount);
+      allWinners = allWinners.concat(groupWinners.map(w => ({
+        ...w,
+        groupName: group.name,
+        groupId: group.id
+      })));
+    }
+    
+    // Sort by date (most recent first) and take top limitCount
+    return allWinners
+      .sort((a, b) => new Date(b.date) - new Date(a.date))
+      .slice(0, limitCount);
+  } catch (e) {
+    console.error('Error fetching all winner history', e);
+    return [];
+  }
+};
+
+// DEPRECATED: Legacy methods for backward compatibility during migration
+// These will be removed after migration is complete
+
+export const calculateAndSaveGroupWinner = async (date, group, userId) => {
+  console.warn('calculateAndSaveGroupWinner is deprecated - winners are now calculated by Cloud Functions');
+  return null;
+};
+
+export const calculateAndSaveAllWinner = async (date, userGroups, userId) => {
+  console.warn('calculateAndSaveAllWinner is deprecated - winners are now calculated by Cloud Functions');
+  return null;
+};
+
+export const calculateAndSaveAllWinnersForUser = async (date, userGroups, userId) => {
+  console.warn('calculateAndSaveAllWinnersForUser is deprecated - winners are now calculated by Cloud Functions');
+  return null;
+};
+
+// Legacy methods with new signatures for backward compatibility
+export const getGroupWinnerLegacy = async (userId, groupId, date) => {
+  console.warn('getGroupWinnerLegacy is deprecated - use getGroupWinner(groupId, date) instead');
+  return await getGroupWinner(groupId, date);
+};
+
+export const getAllWinnerLegacy = async (userId, date) => {
+  console.warn('getAllWinnerLegacy is deprecated - use getAllWinner(userGroups, date) instead');
+  return null; // This needs userGroups which we don't have in legacy signature
+};
+
+export const getYesterdayWinnerLegacy = async (userId, groupId) => {
+  console.warn('getYesterdayWinnerLegacy is deprecated - use getYesterdayWinner(groupId) instead');
+  if (groupId === 'all') {
+    console.warn('getYesterdayWinnerLegacy with groupId="all" is deprecated - use getAllWinner with userGroups');
+    return null;
+  }
+  return await getYesterdayWinner(groupId);
+};
+
+export const getWinnerHistoryForGroupLegacy = async (userId, groupId, limitCount = 30) => {
+  console.warn('getWinnerHistoryForGroupLegacy is deprecated - use getWinnerHistoryForGroup(groupId, limitCount) instead');
+  return await getWinnerHistoryForGroup(groupId, limitCount);
 }; 

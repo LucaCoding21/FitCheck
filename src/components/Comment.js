@@ -71,6 +71,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
+    marginLeft: 3,
     overflow: "hidden",
   },
   avatarImage: {

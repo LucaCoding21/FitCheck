@@ -275,14 +275,20 @@ export default function FitDetailsScreen({ navigation, route }) {
             </View>
 
             {/* Description Section */}
-            <View style={styles.descriptionSection}>
-              <Text style={styles.descriptionText}>
-                {fit.caption || 'Lorem ipsum dolor sit amet consectetur. Adipiscing neque eros donec lectus turpis sit.'}
-              </Text>
-              <Text style={styles.hashtag}>
-                #{fit.tag || 'workfit'}
-              </Text>
-            </View>
+            {(fit.caption || fit.tag) && (
+              <View style={styles.descriptionSection}>
+                {fit.caption && (
+                  <Text style={styles.descriptionText}>
+                    {fit.caption}
+                  </Text>
+                )}
+                {fit.tag && (
+                  <Text style={styles.hashtag}>
+                    #{fit.tag}
+                  </Text>
+                )}
+              </View>
+            )}
 
             {/* Comments Section */}
             <View style={styles.commentsSection}>

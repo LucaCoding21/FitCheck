@@ -10,15 +10,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import OptimizedImage from './OptimizedImage';
 import { formatRating } from '../utils/ratingUtils';
-import { getYesterdayWinner } from '../services/DailyWinnerService';
+import { getYesterdayWinner, getYesterdayAllWinner } from '../services/DailyWinnerService';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../config/firebase';
 
-
-
-const PinnedWinnerCard = ({ onPress, navigation, selectedGroup }) => {
+const PinnedWinnerCard = ({ onPress, navigation, selectedGroup, userGroups }) => {
   const { user } = useAuth();
   const [yesterdayWinner, setYesterdayWinner] = useState(null);
   const [loading, setLoading] = useState(true);
   const isMountedRef = useRef(true);
+  const [fitGroupInfo, setFitGroupInfo] = useState(null);
 
   // Simple fetch function
   const fetchYesterdayWinner = async () => {
@@ -29,9 +30,40 @@ const PinnedWinnerCard = ({ onPress, navigation, selectedGroup }) => {
       }
       setLoading(true);
       
-      const winnerData = await getYesterdayWinner(user.uid, selectedGroup);
+      let winnerData;
+      if (selectedGroup === 'all') {
+        // Use new "All" aggregation method
+        winnerData = await getYesterdayAllWinner(userGroups);
+      } else {
+        // Use new group-specific method
+        winnerData = await getYesterdayWinner(selectedGroup);
+      }
+      
       if (isMountedRef.current && winnerData && winnerData.winner) {
         setYesterdayWinner(winnerData.winner);
+       
+        // If we're in "All" mode and have a fitId, fetch the fit data to get group info
+        if (selectedGroup === 'all' && winnerData.winner.fitId) {
+          try {
+            const fitDoc = await getDoc(doc(db, 'fits', winnerData.winner.fitId));
+            if (fitDoc.exists()) {
+              const fitData = fitDoc.data();
+              // Find the group name from the fit's groupIds
+              if (fitData.groupIds && fitData.groupIds.length > 0) {
+                const groupId = fitData.groupIds[0]; // Use the first group
+                const group = userGroups.find(g => g.id === groupId);
+                if (group) {
+                  setFitGroupInfo({
+                    groupId: group.id,
+                    groupName: group.name
+                  });
+                }
+              }
+            }
+          } catch (error) {
+            console.error('Error fetching fit group info:', error);
+          }
+        }
       } else {
         setYesterdayWinner(null);
       }
@@ -47,15 +79,27 @@ const PinnedWinnerCard = ({ onPress, navigation, selectedGroup }) => {
     isMountedRef.current = true;
     fetchYesterdayWinner();
     return () => { isMountedRef.current = false; };
-  }, [user?.uid, selectedGroup]);
+  }, [user?.uid, selectedGroup, userGroups]);
 
   const handlePress = () => {
     if (navigation && yesterdayWinner?.fitId) {
+      // For "All" mode, use the group info from the fit data
+      // For specific group mode, use the selected group
+      const targetGroup = selectedGroup === 'all' 
+        ? (fitGroupInfo?.groupId || 'all')
+        : selectedGroup;
+      
+      const targetGroupName = selectedGroup === 'all'
+        ? (fitGroupInfo?.groupName || 'All')
+        : (userGroups.find(g => g.id === selectedGroup)?.name || selectedGroup);
+      
       // Navigate to HallOfFlame with the specific winner's fitId for celebration
       navigation.navigate('HallOfFlame', { 
-        selectedGroup,
+        selectedGroup: targetGroup,
+        selectedGroupName: targetGroupName,
         winnerFitId: yesterdayWinner.fitId,
-        celebrationMode: true
+        celebrationMode: true,
+        userGroups: userGroups
       });
     }
     if (onPress) onPress();
@@ -133,7 +177,9 @@ const PinnedWinnerCard = ({ onPress, navigation, selectedGroup }) => {
                 {yesterdayWinner.userName || 'Unknown User'}
               </Text>
               <Text style={styles.groupName} numberOfLines={1}>
-                {selectedGroup === 'all' ? 'All Groups' : selectedGroup}
+                {selectedGroup === 'all'
+                  ? (fitGroupInfo?.groupName || 'All Groups')
+                  : (userGroups.find(g => g.id === selectedGroup)?.name || selectedGroup)}
               </Text>
             </View>
           </View>
@@ -201,7 +247,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     overflow: 'hidden',
     marginRight: 12,
-    aspectRatio: 3/4,
   },
   profileImage: {
     width: '100%',

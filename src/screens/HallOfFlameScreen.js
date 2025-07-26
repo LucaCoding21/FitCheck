@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -18,7 +18,8 @@ import {
   getWinnerHistoryForGroup, 
   getWinnerArchiveForGroup,
   getWinnerStatsForGroup,
-  getTopPerformersForGroup
+  getTopPerformersForGroup,
+  getAllWinnerHistory
 } from '../services/DailyWinnerService';
 import { theme } from '../styles/theme';
 import { doc, onSnapshot } from 'firebase/firestore';
@@ -27,14 +28,13 @@ import WinnerArchiveCard from '../components/WinnerArchiveCard';
 
 const { width } = Dimensions.get('window');
 
-
-
 export default function HallOfFlameScreen({ navigation, route }) {
   const { user } = useAuth();
   const selectedGroup = route?.params?.selectedGroup || 'all';
   const selectedGroupName = route?.params?.selectedGroupName || 'All';
   const winnerFitId = route?.params?.winnerFitId || null;
   const celebrationMode = route?.params?.celebrationMode || false;
+  const userGroups = route?.params?.userGroups || [];
 
   const [winnerHistory, setWinnerHistory] = useState([]);
   const [celebratedFit, setCelebratedFit] = useState(null);
@@ -45,32 +45,24 @@ export default function HallOfFlameScreen({ navigation, route }) {
   const isMountedRef = useRef(true);
   const unsubscribeRef = useRef(null);
 
-  useEffect(() => {
-    isMountedRef.current = true;
-    
-    if (celebrationMode && winnerFitId) {
-      fetchCelebratedFit();
-    } else {
-      fetchArchive(0, false);
-    }
-    
-    return () => { 
-      isMountedRef.current = false;
-      if (unsubscribeRef.current) {
-        unsubscribeRef.current();
-      }
-    };
-  }, [user?.uid, selectedGroup, winnerFitId, celebrationMode]);
+  // Memoize userGroups to prevent unnecessary re-renders
+  const memoizedUserGroups = useRef(userGroups);
+  if (JSON.stringify(memoizedUserGroups.current) !== JSON.stringify(userGroups)) {
+    memoizedUserGroups.current = userGroups;
+  }
 
-
-
-  const fetchCelebratedFit = async () => {
+  // Memoize the fetch functions to prevent recreation on every render
+  const fetchCelebratedFit = useCallback(async () => {
     if (!winnerFitId) return;
 
     try {
       setLoading(true);
       
-
+      // Clean up any existing listener
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
+        unsubscribeRef.current = null;
+      }
       
       const fitRef = doc(db, 'fits', winnerFitId);
       
@@ -80,6 +72,9 @@ export default function HallOfFlameScreen({ navigation, route }) {
           setCelebratedFit(fitData);
         }
         if (isMountedRef.current) setLoading(false);
+      }, (error) => {
+        console.error('Error in onSnapshot:', error);
+        if (isMountedRef.current) setLoading(false);
       });
 
       unsubscribeRef.current = unsubscribe;
@@ -87,11 +82,9 @@ export default function HallOfFlameScreen({ navigation, route }) {
       console.error('Error fetching celebrated fit:', error);
       if (isMountedRef.current) setLoading(false);
     }
-  };
+  }, [winnerFitId]);
 
-
-
-  const fetchArchive = async (offset = 0, append = false) => {
+  const fetchArchive = useCallback(async (offset = 0, append = false) => {
     if (!user?.uid || !selectedGroup) return;
 
     try {
@@ -100,7 +93,20 @@ export default function HallOfFlameScreen({ navigation, route }) {
         setLoading(true); // Set main loading state for initial fetch
       }
       
-      const archive = await getWinnerArchiveForGroup(user.uid, selectedGroup, 20, offset);
+      let archive;
+      if (selectedGroup === 'all') {
+        // Use new "All" aggregation method
+        archive = await getAllWinnerHistory(memoizedUserGroups.current, 20);
+        // For "All" we don't support pagination yet, so we'll slice the results
+        if (offset > 0) {
+          archive = archive.slice(offset, offset + 20);
+        } else {
+          archive = archive.slice(0, 20);
+        }
+      } else {
+        // Use new group-specific method
+        archive = await getWinnerArchiveForGroup(selectedGroup, 20, offset);
+      }
       
       if (isMountedRef.current) {
         if (append) {
@@ -121,17 +127,15 @@ export default function HallOfFlameScreen({ navigation, route }) {
         }
       }
     }
-  };
+  }, [user?.uid, selectedGroup]);
 
-
-
-  const handleLoadMore = () => {
+  const handleLoadMore = useCallback(() => {
     if (!archiveLoading && hasMoreWinners) {
       fetchArchive(archiveOffset, true);
     }
-  };
+  }, [archiveLoading, hasMoreWinners, archiveOffset, fetchArchive]);
 
-  const handleWinnerPress = (winner) => {
+  const handleWinnerPress = useCallback((winner) => {
     if (winner?.winner?.fitId) {
       navigation.navigate('HallOfFlame', {
         selectedGroup,
@@ -139,13 +143,13 @@ export default function HallOfFlameScreen({ navigation, route }) {
         celebrationMode: true
       });
     }
-  };
+  }, [navigation, selectedGroup]);
 
-  const handleBackPress = () => {
+  const handleBackPress = useCallback(() => {
     navigation.goBack();
-  };
+  }, [navigation]);
 
-  const renderWinnerCard = ({ item, index }) => {
+  const renderWinnerCard = useCallback(({ item, index }) => {
     const isCurrentUser = item.winner?.userId === user?.uid;
     const showGroupName = selectedGroup === 'all' && item.groupName;
     const isFirstInRow = index % 2 === 0;
@@ -161,9 +165,9 @@ export default function HallOfFlameScreen({ navigation, route }) {
         isLastInRow={isLastInRow}
       />
     );
-  };
+  }, [user?.uid, selectedGroup, handleWinnerPress]);
 
-  const renderFooter = () => {
+  const renderFooter = useCallback(() => {
     if (!archiveLoading) return null;
     
     return (
@@ -172,9 +176,9 @@ export default function HallOfFlameScreen({ navigation, route }) {
         <Text style={styles.loadingText}>Loading more...</Text>
       </View>
     );
-  };
+  }, [archiveLoading]);
 
-  const renderHeader = () => (
+  const renderHeader = useCallback(() => (
     <View style={styles.headerSection}>
       <Text style={styles.headerTitle}>
         {selectedGroup === 'all' 
@@ -183,7 +187,56 @@ export default function HallOfFlameScreen({ navigation, route }) {
         }
       </Text>
     </View>
-  );
+  ), [selectedGroup, selectedGroupName]);
+
+  // Celebration mode helper functions - moved to top level
+  const getGroupDisplayName = useCallback(() => {
+    if (selectedGroup === 'all') {
+      return celebratedFit?.groupName || 'Group';
+    }
+    return selectedGroupName;
+  }, [selectedGroup, selectedGroupName, celebratedFit?.groupName]);
+
+  const handleGroupArchivePress = useCallback(() => {
+    // Navigate to the specific group's Hall of Flame archive
+    const targetGroup = selectedGroup === 'all' ? 'all' : selectedGroup;
+    navigation.navigate('HallOfFlame', { 
+      selectedGroup: targetGroup
+    });
+  }, [navigation, selectedGroup]);
+
+  // Celebration mode archive press handler - moved to top level
+  const handleCelebrationArchivePress = useCallback(() => {
+    // Always show the correct group name
+    const groupDisplayName = selectedGroup === 'all'
+      ? (celebratedFit?.groupName || selectedGroupName || 'Group')
+      : (selectedGroupName || celebratedFit?.groupName || 'Group');
+    
+    // Navigate to the specific group's Hall of Flame archive
+    navigation.navigate('HallOfFlame', { 
+      selectedGroup,
+      selectedGroupName: groupDisplayName,
+      userGroups
+    });
+  }, [navigation, selectedGroup, selectedGroupName, celebratedFit?.groupName, userGroups]);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    
+    if (celebrationMode && winnerFitId) {
+      fetchCelebratedFit();
+    } else {
+      fetchArchive(0, false);
+    }
+    
+    return () => { 
+      isMountedRef.current = false;
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
+        unsubscribeRef.current = null;
+      }
+    };
+  }, [celebrationMode, winnerFitId, fetchCelebratedFit, fetchArchive]);
 
   if (loading) {
     return (
@@ -201,26 +254,14 @@ export default function HallOfFlameScreen({ navigation, route }) {
 
   // Celebration mode: show single celebrated fit
   if (celebrationMode && celebratedFit) {
-    // Get the group name to display on the button
-    const getGroupDisplayName = () => {
-      if (selectedGroup === 'all') {
-        return celebratedFit.groupName || 'Group';
-      }
-      return selectedGroupName;
-    };
-
-    const handleGroupArchivePress = () => {
-      // Navigate to the specific group's Hall of Flame archive
-      const targetGroup = selectedGroup === 'all' ? 'all' : selectedGroup;
-      navigation.navigate('HallOfFlame', { 
-        selectedGroup: targetGroup
-      });
-    };
+    // Always show the correct group name
+    const groupDisplayName = selectedGroup === 'all'
+      ? (celebratedFit.groupName || selectedGroupName || 'Group')
+      : (selectedGroupName || celebratedFit.groupName || 'Group');
 
     return (
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
-        
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity
@@ -233,15 +274,12 @@ export default function HallOfFlameScreen({ navigation, route }) {
           <Text style={styles.headerTitle}>Winner</Text>
           <View style={styles.headerSpacer} />
         </View>
-
         <ScrollView 
           style={styles.scrollView}
           contentContainerStyle={styles.scrollViewContent}
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.celebrationContainer}>
-
-
             {/* Winner's Fit - Hero Image */}
             <View style={styles.fitHeroContainer}>
               <OptimizedImage
@@ -250,13 +288,11 @@ export default function HallOfFlameScreen({ navigation, route }) {
                 contentFit="cover"
                 showLoadingIndicator={true}
               />
-              
               {/* Winner Badge Overlay */}
               <View style={styles.winnerBadgeOverlay}>
                 <Ionicons name="trophy" size={24} color="#FFD700" />
                 <Text style={styles.winnerBadgeText}>WINNER</Text>
               </View>
-              
               {/* Tag Overlay */}
               {celebratedFit.tag && (
                 <View style={styles.tagOverlay}>
@@ -264,7 +300,6 @@ export default function HallOfFlameScreen({ navigation, route }) {
                 </View>
               )}
             </View>
-
             {/* Winner Info Section */}
             <View style={styles.winnerInfoSection}>
               {/* User Profile Row */}
@@ -282,22 +317,21 @@ export default function HallOfFlameScreen({ navigation, route }) {
                     </View>
                   )}
                 </View>
-                              <View style={styles.userInfo}>
-                <Text style={styles.userName}>
-                  {celebratedFit.userName || 'Unknown User'}
-                </Text>
-                <Text style={styles.userSubtitle}>
-                  {selectedGroup === 'all' ? 'All Groups' : getGroupDisplayName()}
-                </Text>
+                <View style={styles.userInfo}>
+                  <Text style={styles.userName}>
+                    {celebratedFit.userName || 'Unknown User'}
+                  </Text>
+                  <Text style={styles.userSubtitle}>
+                    {groupDisplayName}
+                  </Text>
+                </View>
               </View>
-              </View>
-
               {/* Rating Stats */}
               <View style={styles.ratingStatsContainer}>
                 <View style={styles.ratingStat}>
                   <Ionicons name="star" size={20} color="#FFD700" />
                   <Text style={styles.ratingValue}>
-                    {celebratedFit.averageRating?.toFixed(1) || '0.0'}
+                    {celebratedFit.fairRating?.toFixed(1) || '0.0'}
                   </Text>
                   <Text style={styles.ratingLabel}>Average</Text>
                 </View>
@@ -311,19 +345,17 @@ export default function HallOfFlameScreen({ navigation, route }) {
                 </View>
               </View>
             </View>
-
             {/* Fit Details Section */}
             <View style={styles.fitDetailsSection}>
               {celebratedFit.caption && (
                 <Text style={styles.fitCaption}>"{celebratedFit.caption}"</Text>
               )}
             </View>
-
             {/* Action Button */}
             <View style={styles.actionButtonsSection}>
               <TouchableOpacity
                 style={styles.primaryButton}
-                onPress={handleGroupArchivePress}
+                onPress={handleCelebrationArchivePress}
                 activeOpacity={0.8}
               >
                 <Ionicons name="trophy" size={20} color="#FFFFFF" />

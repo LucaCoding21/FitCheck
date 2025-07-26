@@ -919,6 +919,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   headerTitleContainer: {
+    marginRight: -20,
     flex: 1,
     alignItems: 'center',
   },
@@ -953,8 +954,8 @@ const styles = StyleSheet.create({
   },
   saveButton: {
     backgroundColor: theme.colors.primary,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingHorizontal: 15,
+    paddingVertical: 5,
     borderRadius: 22,
     minWidth: 70,
     alignItems: 'center',
@@ -990,10 +991,15 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   flameButton: {
-    width: 44,
-    height: 44,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#2A2A2A',
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#444444',
+    marginRight: -5,
   },
   menuButton: {
     width: 44,

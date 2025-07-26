@@ -151,22 +151,22 @@ const CaptionInput = ({
     Animated.parallel([
       Animated.timing(modalAnim, {
         toValue: 1,
-        duration: 350,
+        duration: 250, // Faster animation
         useNativeDriver: true,
       }),
       Animated.timing(scaleAnim, {
         toValue: 1,
-        duration: 350,
+        duration: 250, // Faster animation
         useNativeDriver: true,
       }),
       Animated.timing(opacityAnim, {
         toValue: 1,
-        duration: 250,
+        duration: 200, // Faster animation
         useNativeDriver: true,
       }),
       Animated.timing(translateYAnim, {
         toValue: 0,
-        duration: 350,
+        duration: 250, // Faster animation
         useNativeDriver: true,
       }),
     ]).start();
@@ -174,31 +174,32 @@ const CaptionInput = ({
 
   // Enhanced blur animation - Instagram-like smooth exit
   const handleBlur = () => {
-    // Parallel animations for smooth exit
+    // Set focused state immediately for responsive UI
+    setIsFocused(false);
+    
+    // Run animations in background without blocking UI
     Animated.parallel([
       Animated.timing(modalAnim, {
         toValue: 0,
-        duration: 300,
+        duration: 200, // Faster animation
         useNativeDriver: true,
       }),
       Animated.timing(scaleAnim, {
         toValue: 0.95,
-        duration: 300,
+        duration: 200, // Faster animation
         useNativeDriver: true,
       }),
       Animated.timing(opacityAnim, {
         toValue: 0,
-        duration: 200,
+        duration: 150, // Faster animation
         useNativeDriver: true,
       }),
       Animated.timing(translateYAnim, {
         toValue: 50,
-        duration: 300,
+        duration: 200, // Faster animation
         useNativeDriver: true,
       }),
-    ]).start(() => {
-      setIsFocused(false);
-    });
+    ]).start();
   };
 
   // Handle suggestion selection

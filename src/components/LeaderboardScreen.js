@@ -210,6 +210,7 @@ export default function LeaderboardScreen({ navigation, route }) {
   const [selectedGroup, setSelectedGroup] = useState('all'); // 'all' or groupId
   const [fadeAnim] = useState(new Animated.Value(0));
   const [slideAnim] = useState(new Animated.Value(50));
+  const [flameAnim] = useState(new Animated.Value(1));
   const [countdownText, setCountdownText] = useState('');
   const [showInfoModal, setShowInfoModal] = useState(false);
 
@@ -232,6 +233,7 @@ export default function LeaderboardScreen({ navigation, route }) {
   useEffect(() => {
     fetchUserGroups();
     animateIn();
+    startFlameFlicker();
     
     // Initialize countdown
     setCountdownText(calculateTimeUntilMidnight());
@@ -265,6 +267,28 @@ export default function LeaderboardScreen({ navigation, route }) {
         useNativeDriver: true,
       }),
     ]).start();
+  };
+
+  const startFlameFlicker = () => {
+    const flickerAnimation = () => {
+      Animated.sequence([
+        Animated.timing(flameAnim, {
+          toValue: 0.7,
+          duration: 200 + Math.random() * 300, // Random duration between 200-500ms
+          useNativeDriver: true,
+        }),
+        Animated.timing(flameAnim, {
+          toValue: 1,
+          duration: 150 + Math.random() * 200, // Random duration between 150-350ms
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        // Continue flickering with random intervals
+        setTimeout(flickerAnimation, 500 + Math.random() * 1000); // Random interval between 500-1500ms
+      });
+    };
+    
+    flickerAnimation();
   };
 
   const fetchUserGroups = async () => {
@@ -520,12 +544,15 @@ export default function LeaderboardScreen({ navigation, route }) {
                   const selectedGroupData = userGroups.find(g => g.id === selectedGroup);
                   navigation.navigate('HallOfFlame', { 
                     selectedGroup,
-                    selectedGroupName: selectedGroupData?.name || 'Group'
+                    selectedGroupName: selectedGroupData?.name || 'Group',
+                    userGroups: userGroups
                   });
                 }}
                 activeOpacity={0.7}
               >
-                <Ionicons name="flame" size={20} color="#CD9F3E" />
+                <Animated.View style={{ opacity: flameAnim }}>
+                  <Ionicons name="flame" size={20} color="#CD9F3E" />
+                </Animated.View>
               </TouchableOpacity>
             )}
             <TouchableOpacity
@@ -685,7 +712,7 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
   title: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: 'bold',
     color: '#FFFFFF',
     letterSpacing: 0.5,

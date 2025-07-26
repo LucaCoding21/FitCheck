@@ -367,7 +367,7 @@ export default function PostFitScreen({ navigation, route }) {
         comments: [],
         createdAt: new Date(),
         lastUpdated: new Date(),
-        date: new Date().toISOString().slice(0, 10), // Add date in YYYY-MM-DD format
+        date: new Date().toLocaleDateString('en-CA'), // Add date in YYYY-MM-DD format in local timezone
       };
 
       const fitDocRef = await addDoc(collection(db, "fits"), fitData);

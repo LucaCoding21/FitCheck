@@ -15,6 +15,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { theme } from "../styles/theme";
 import notificationService from "../services/NotificationService";
 import OptimizedImage from "./OptimizedImage";
+import { Ionicons } from '@expo/vector-icons';
 
 export default function CommentInput({ fitId, onCommentAdded, placeholder = "Add a comment...", onFocus }) {
   const { user } = useAuth();
@@ -116,79 +117,89 @@ export default function CommentInput({ fitId, onCommentAdded, placeholder = "Add
   const canSend = commentText.trim().length > 0 && !isSubmitting;
 
   return (
-    <View style={styles.inputContainer}>
-      {/* User Avatar */}
-      <View style={styles.userAvatar}>
-        {userProfileImageURL ? (
-          <OptimizedImage 
-            source={{ uri: userProfileImageURL }} 
-            style={styles.avatarImage}
-            placeholder={require('../../assets/icon.png')}
-            showLoadingIndicator={false}
+    <View style={styles.outerContainer}>
+      <View style={styles.inputContainer}>
+        {/* User Avatar */}
+        <View style={styles.userAvatar}>
+          {userProfileImageURL ? (
+            <OptimizedImage 
+              source={{ uri: userProfileImageURL }} 
+              style={styles.avatarImage}
+              placeholder={require('../../assets/icon.png')}
+              showLoadingIndicator={false}
+            />
+          ) : (
+            <View style={styles.avatarPlaceholder}>
+              <Text style={styles.avatarText}>
+                {(user?.displayName || user?.email || "User").charAt(0).toUpperCase()}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* Input Field */}
+        <View style={styles.inputFieldContainer}>
+          <TextInput
+            style={styles.textInput}
+            placeholder={placeholder}
+            placeholderTextColor={theme.colors.textMuted || '#71717A'}
+            value={commentText}
+            onChangeText={setCommentText}
+            multiline
+            maxLength={500}
+            blurOnSubmit={false}
+            onSubmitEditing={handleSubmitComment}
+            onFocus={handleInputFocus}
           />
-        ) : (
-          <View style={styles.avatarPlaceholder}>
-            <Text style={styles.avatarText}>
-              {(user?.displayName || user?.email || "User").charAt(0).toUpperCase()}
-            </Text>
-          </View>
-        )}
-      </View>
+        </View>
 
-      {/* Input Field */}
-      <View style={styles.inputFieldContainer}>
-        <TextInput
-          style={styles.textInput}
-          placeholder={placeholder}
-          placeholderTextColor="#71717A"
-          value={commentText}
-          onChangeText={setCommentText}
-          multiline
-          maxLength={500}
-          blurOnSubmit={false}
-          onSubmitEditing={handleSubmitComment}
-          onFocus={handleInputFocus}
-        />
-      </View>
-
-      {/* Send Button */}
-      <Pressable
-        style={({ pressed }) => [
-          styles.sendButton,
-          canSend ? styles.sendButtonActive : styles.sendButtonDisabled,
-          pressed && { opacity: 0.8 }
-        ]}
-        onPress={handleSubmitComment}
-        disabled={isSubmitting}
-        android_ripple={{ color: 'rgba(255, 255, 255, 0.1)', borderless: false }}
-      >
-        <Text
-          style={[
-            styles.sendButtonText,
-            canSend ? styles.sendButtonTextActive : styles.sendButtonTextDisabled,
+        {/* Send Button */}
+        <Pressable
+          style={({ pressed }) => [
+            styles.sendButton,
+            canSend ? styles.sendButtonActive : styles.sendButtonDisabled,
+            pressed && { opacity: 0.8 }
           ]}
+          onPress={handleSubmitComment}
+          disabled={isSubmitting || !canSend}
+          android_ripple={{ color: 'rgba(255, 255, 255, 0.1)', borderless: false }}
         >
-          {isSubmitting ? "..." : "→"}
-        </Text>
-      </Pressable>
+          <Ionicons
+            name="arrow-up-circle"
+            size={22}
+            color={'#fff'}
+            style={styles.sendIcon}
+          />
+        </Pressable>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  outerContainer: {
+    backgroundColor: theme.colors.background,
+    paddingBottom: 0,
+    paddingTop: 0,
+  },
   inputContainer: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    gap: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 12,
+    backgroundColor: 'transparent',
   },
   userAvatar: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    overflow: 'hidden',
     backgroundColor: '#2A2A2A',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 0,
+    overflow: 'hidden',
+    marginLeft: -15,
   },
   avatarImage: {
     width: '100%',
@@ -204,51 +215,54 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   avatarText: {
-    fontSize: 14,
+    fontSize: 15,
     color: '#FFFFFF',
     fontWeight: '600',
   },
   inputFieldContainer: {
     flex: 1,
-    backgroundColor: '#2A2A2A',
-    borderRadius: 16,
+    backgroundColor: '#232323',
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    overflow: 'hidden',
+    borderColor: 'rgba(255,255,255,0.08)',
+    marginRight: 4,
+    minHeight: 40,
+    maxHeight: 90,
+    justifyContent: 'center',
+    paddingVertical: 0,
   },
   textInput: {
     fontSize: 15,
     color: '#FFFFFF',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    maxHeight: 80,
-    textAlignVertical: "top",
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    minHeight: 40,
+    maxHeight: 90,
+    textAlignVertical: 'center',
+    backgroundColor: 'transparent',
   },
   sendButton: {
-    backgroundColor: '#2A2A2A',
-    borderRadius: 16,
-    width: 32,
+    width: 70,
     height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: theme.colors.primary,
+    flexDirection: 'row',
+    paddingRight: 10,
+    paddingLeft: 10,
+    marginLeft: 0,
+    marginRight: -15,
   },
   sendButtonDisabled: {
     backgroundColor: '#666666',
+    opacity: 0.5,
   },
   sendButtonActive: {
     backgroundColor: theme.colors.primary,
+    opacity: 1,
   },
-  sendButtonText: {
-    fontSize: 12,
-    color: '#FFFFFF',
-    fontWeight: "600",
-  },
-  sendButtonTextDisabled: {
-    color: "rgba(255, 255, 255, 0.5)",
-  },
-  sendButtonTextActive: {
-    color: '#FFFFFF',
+  sendIcon: {
+    marginLeft: 0,
   },
 }); 
