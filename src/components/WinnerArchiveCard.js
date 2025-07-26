@@ -16,15 +16,17 @@ export default function WinnerArchiveCard({
   winner, 
   onPress, 
   isCurrentUser = false,
-  showGroupName = false 
+  showGroupName = false,
+  isFirstInRow = false,
+  isLastInRow = false
 }) {
   if (!winner || !winner.winner) {
     return null;
   }
 
-  const { winner: winnerData, date, groupName } = winner;
+  const { winner: winnerData, date, groupName: topLevelGroupName } = winner;
   
-  // Format date for display (like polaroid captions)
+  // Format date for display with timeline feel
   const formatDate = (dateString) => {
     const date = new Date(dateString);
     const today = new Date();
@@ -44,18 +46,30 @@ export default function WinnerArchiveCard({
 
   const formattedDate = formatDate(date);
   const rating = winnerData.averageRating || 0;
+  const ratingCount = winnerData.ratingCount || 0;
+
+  // Determine fire intensity based on rating
+  const getFireIntensity = (rating) => {
+    if (rating >= 4.8) return 'high';
+    if (rating >= 4.5) return 'medium';
+    return 'low';
+  };
+
+  const fireIntensity = getFireIntensity(rating);
 
   return (
     <TouchableOpacity
       style={[
         styles.container,
-        isCurrentUser && styles.currentUserContainer
+        isCurrentUser && styles.currentUserContainer,
+        isFirstInRow && styles.firstInRow,
+        isLastInRow && styles.lastInRow
       ]}
       onPress={onPress}
       activeOpacity={0.9}
     >
-      {/* Polaroid-style Image Container */}
-      <View style={styles.polaroidContainer}>
+      {/* Fire-themed Image Container */}
+      <View style={styles.imageContainer}>
         <OptimizedImage
           source={{ uri: winnerData.imageURL }}
           style={styles.image}
@@ -64,28 +78,76 @@ export default function WinnerArchiveCard({
           priority="normal"
         />
         
-        {/* Subtle Winner Indicator */}
-        <View style={styles.winnerIndicator}>
-          <Ionicons name="trophy" size={12} color="#FFD700" />
+        {/* Fire Glow Overlay */}
+        <View style={[styles.fireGlow, styles[`fireGlow${fireIntensity}`]]} />
+
+        {/* Rating Badge */}
+        <View style={styles.ratingBadge}>
+          <Ionicons name="star" size={12} color="#FFD700" />
+          <Text style={styles.ratingText}>{rating.toFixed(1)}</Text>
         </View>
+
+        {/* Tag Overlay */}
+        {winnerData.tag && (
+          <View style={styles.tagOverlay}>
+            <Text style={styles.tagText}>#{winnerData.tag}</Text>
+          </View>
+        )}
       </View>
 
-      {/* Polaroid-style Caption Area */}
-      <View style={styles.captionArea}>
-        <Text style={styles.userName} numberOfLines={1}>
-          {winnerData.userName || 'Unknown'}
-        </Text>
-        <Text style={styles.dateText}>{formattedDate}</Text>
-        {showGroupName && groupName && (
-          <Text style={styles.groupName} numberOfLines={1}>{groupName}</Text>
-        )}
+      {/* Enhanced Info Section */}
+      <View style={styles.infoSection}>
+        {/* User Info Row */}
+        <View style={styles.userRow}>
+          <View style={styles.profileContainer}>
+            {winnerData.userProfileImageURL ? (
+              <OptimizedImage
+                source={{ uri: winnerData.userProfileImageURL }}
+                style={styles.profileImage}
+                showLoadingIndicator={false}
+              />
+            ) : (
+              <View style={styles.profilePlaceholder}>
+                <Ionicons name="person" size={16} color="#FFFFFF" />
+              </View>
+            )}
+          </View>
+          <View style={styles.userInfo}>
+            <Text style={styles.userName} numberOfLines={1}>
+              {winnerData.userName || 'Unknown'}
+            </Text>
+            {showGroupName && (winnerData.groupName || topLevelGroupName) && (
+              <Text style={styles.groupName} numberOfLines={1}>
+                {winnerData.groupName || topLevelGroupName}
+              </Text>
+            )}
+          </View>
+        </View>
+
+        {/* Timeline Date */}
+        <View style={styles.timelineSection}>
+          <View style={styles.timelineDot} />
+          <Text style={styles.dateText}>{formattedDate}</Text>
+        </View>
+
+        {/* Stats Row */}
+        <View style={styles.statsRow}>
+          <View style={styles.statItem}>
+            <Ionicons name="star" size={12} color={theme.colors.secondary} />
+            <Text style={styles.statText}>{rating.toFixed(1)}</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statItem}>
+            <Ionicons name="people" size={12} color={theme.colors.textSecondary} />
+            <Text style={styles.statText}>{ratingCount}</Text>
+          </View>
+        </View>
+
+        {/* Caption Preview */}
         {winnerData.caption && (
           <Text style={styles.captionText} numberOfLines={2}>
             "{winnerData.caption}"
           </Text>
-        )}
-        {winnerData.tag && (
-          <Text style={styles.tagText}>#{winnerData.tag}</Text>
         )}
       </View>
     </TouchableOpacity>
@@ -94,72 +156,166 @@ export default function WinnerArchiveCard({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    marginHorizontal: 8,
-    marginBottom: 16,
-    width: (width - 48) / 2, // Two columns with spacing
-    ...theme.shadows.md,
+    backgroundColor: theme.colors.surface,
+    borderRadius: 16,
+    marginBottom: 20,
+    width: (width - 48) / 2,
+    overflow: 'hidden',
+    ...theme.shadows.lg,
   },
   currentUserContainer: {
     borderWidth: 2,
     borderColor: theme.colors.secondary,
   },
-  polaroidContainer: {
+  firstInRow: {
+    marginLeft: 16,
+    marginRight: 8,
+  },
+  lastInRow: {
+    marginLeft: 8,
+    marginRight: 16,
+  },
+  imageContainer: {
     position: 'relative',
     width: '100%',
-    aspectRatio: 1, // Square like polaroids
-    borderTopLeftRadius: 8,
-    borderTopRightRadius: 8,
+    aspectRatio: 3/4,
     overflow: 'hidden',
   },
   image: {
     width: '100%',
     height: '100%',
   },
-  winnerIndicator: {
+  fireGlow: {
     position: 'absolute',
-    top: 8,
-    right: 8,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 16,
+  },
+  fireGlowhigh: {
+    backgroundColor: 'rgba(255, 107, 53, 0.15)',
+  },
+  fireGlowmedium: {
+    backgroundColor: 'rgba(255, 165, 0, 0.1)',
+  },
+  fireGlowlow: {
+    backgroundColor: 'rgba(255, 193, 7, 0.05)',
+  },
+  ratingBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
     borderRadius: 12,
-    width: 24,
-    height: 24,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  ratingText: {
+    color: '#FFD700',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  tagOverlay: {
+    position: 'absolute',
+    bottom: 12,
+    right: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    borderRadius: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  tagText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  infoSection: {
+    padding: 16,
+  },
+  userRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  profileContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginRight: 10,
+  },
+  profileImage: {
+    width: '100%',
+    height: '100%',
+  },
+  profilePlaceholder: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: theme.colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
+    borderRadius: 16,
   },
-  captionArea: {
-    padding: 12,
-    backgroundColor: '#FFFFFF',
-    borderBottomLeftRadius: 8,
-    borderBottomRightRadius: 8,
+  userInfo: {
+    flex: 1,
   },
   userName: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#000000',
+    fontWeight: 'bold',
+    color: theme.colors.text,
     marginBottom: 2,
-  },
-  dateText: {
-    fontSize: 12,
-    color: '#666666',
-    marginBottom: 4,
   },
   groupName: {
     fontSize: 11,
-    color: '#888888',
-    marginBottom: 4,
+    color: theme.colors.textSecondary,
+  },
+  timelineSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  timelineDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: theme.colors.secondary,
+    marginRight: 8,
+  },
+  dateText: {
+    fontSize: 12,
+    color: theme.colors.textSecondary,
+    fontWeight: '500',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  statItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  statText: {
+    fontSize: 11,
+    color: theme.colors.textSecondary,
+    fontWeight: '500',
+  },
+
+  statDivider: {
+    width: 1,
+    height: 12,
+    backgroundColor: theme.colors.border,
+    marginHorizontal: 8,
   },
   captionText: {
     fontSize: 12,
-    color: '#333333',
+    color: theme.colors.textSecondary,
     fontStyle: 'italic',
     lineHeight: 16,
-    marginBottom: 4,
-  },
-  tagText: {
-    fontSize: 11,
-    color: theme.colors.primary,
-    fontWeight: '500',
   },
 }); 

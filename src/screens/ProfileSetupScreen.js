@@ -316,7 +316,8 @@ const styles = StyleSheet.create({
   },
   imageSection: {
     alignItems: 'center',
-    marginBottom: 60,
+    marginTop: 30,
+    marginBottom: 0,
   },
   profileImageContainer: {
     position: 'relative',
@@ -359,7 +360,8 @@ const styles = StyleSheet.create({
   },
   inputSection: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
+    marginTop: 25,
   },
   inputContainer: {
     flexDirection: 'row',

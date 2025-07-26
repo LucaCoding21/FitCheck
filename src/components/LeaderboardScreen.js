@@ -366,7 +366,7 @@ export default function LeaderboardScreen({ navigation, route }) {
               />
             ) : (
               <View style={styles.placeholderProfile}>
-                <Text style={styles.placeholderText}>👤</Text>
+                <Ionicons name="person" size={24} color={theme.colors.textMuted} />
               </View>
             )}
           </View>
@@ -513,6 +513,21 @@ export default function LeaderboardScreen({ navigation, route }) {
         <View style={styles.headerTop}>
           <Text style={styles.title}>Daily Leaderboard</Text>
           <View style={styles.headerButtons}>
+            {selectedGroup !== 'all' && (
+              <TouchableOpacity
+                style={styles.trophyButton}
+                onPress={() => {
+                  const selectedGroupData = userGroups.find(g => g.id === selectedGroup);
+                  navigation.navigate('HallOfFlame', { 
+                    selectedGroup,
+                    selectedGroupName: selectedGroupData?.name || 'Group'
+                  });
+                }}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="flame" size={20} color="#CD9F3E" />
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               style={styles.infoButton}
               onPress={() => setShowInfoModal(true)}
@@ -627,20 +642,22 @@ export default function LeaderboardScreen({ navigation, route }) {
                 </Text>
               </View>
 
+
+
               <View style={styles.requirementsCard}>
-                <Text style={styles.requirementsTitle}>To Appear on Leaderboard</Text>
-                <Text style={styles.requirementsSubtext}>Get rated by friends in your group</Text>
+                <Text style={styles.requirementsTitle}>How Winners Are Determined</Text>
+                <Text style={styles.requirementsSubtext}>Tie-breaking rules for equal ratings</Text>
                 <View style={styles.requirementRow}>
-                  <Text style={styles.requirementLabel}>Small groups (1-3 people):</Text>
-                  <Text style={styles.requirementValue}>1 rating</Text>
+                  <Text style={styles.requirementLabel}>Primary:</Text>
+                  <Text style={styles.requirementValue}>Highest average rating</Text>
                 </View>
                 <View style={styles.requirementRow}>
-                  <Text style={styles.requirementLabel}>Medium groups (4-6 people):</Text>
-                  <Text style={styles.requirementValue}>2 ratings</Text>
+                  <Text style={styles.requirementLabel}>If tied:</Text>
+                  <Text style={styles.requirementValue}>More ratings wins</Text>
                 </View>
                 <View style={styles.requirementRow}>
-                  <Text style={styles.requirementLabel}>Large groups (7+ people):</Text>
-                  <Text style={styles.requirementValue}>3-4 ratings</Text>
+                  <Text style={styles.requirementLabel}>If still tied:</Text>
+                  <Text style={styles.requirementValue}>Earlier post wins</Text>
                 </View>
               </View>
 
@@ -898,7 +915,17 @@ const styles = StyleSheet.create({
   headerButtons: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
+  },
+  trophyButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#2A2A2A',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#444444',
   },
   infoButton: {
     width: 32,
@@ -993,6 +1020,11 @@ const styles = StyleSheet.create({
     color: '#CCCCCC',
     textAlign: 'center',
     marginBottom: 16,
+  },
+  requirementsText: {
+    fontSize: 14,
+    color: '#CCCCCC',
+    lineHeight: 20,
   },
   requirementRow: {
     flexDirection: 'row',

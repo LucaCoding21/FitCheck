@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, ActivityIndicator, StyleSheet, Text, TouchableOpacity, Animated, Image, Dimensions } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useFocusEffect } from '@react-navigation/native';
@@ -86,8 +87,8 @@ function CustomTabBar({ state, descriptors, navigation, setShowPhotoPicker }) {
       flexDirection: 'row',
       backgroundColor: 'transparent',
       borderTopWidth: 0,
-      paddingBottom: 20,
-      paddingTop: 10,
+      paddingBottom: 26,
+      paddingTop: 8,
       paddingHorizontal: 16,
       elevation: 0,
       shadowOpacity: 0,
@@ -95,18 +96,18 @@ function CustomTabBar({ state, descriptors, navigation, setShowPhotoPicker }) {
       <View style={{
         flexDirection: 'row',
         backgroundColor: '#060606',
-        borderRadius: 35,
-        paddingHorizontal: 12,
-        paddingVertical: 12,
+        borderRadius: 30,
+        paddingHorizontal: 10,
+        paddingVertical: 8,
         flex: 1,
         alignItems: 'center',
         justifyContent: 'space-around',
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
+        shadowOffset: { width: 0, height: 3 },
         shadowOpacity: 0.3,
-        shadowRadius: 8,
-        elevation: 8,
-        minHeight: 60,
+        shadowRadius: 6,
+        elevation: 6,
+        minHeight: 52,
       }}>
         {state.routes.map((route, index) => {
           const { options } = descriptors[route.key];
@@ -140,7 +141,7 @@ function CustomTabBar({ state, descriptors, navigation, setShowPhotoPicker }) {
                 style={{
                   alignItems: 'center',
                   justifyContent: 'center',
-                  marginTop: -10,
+                  marginTop: -6,
                   width: 56,
                   height: 56,
                 }}
@@ -153,10 +154,10 @@ function CustomTabBar({ state, descriptors, navigation, setShowPhotoPicker }) {
                   alignItems: 'center',
                   justifyContent: 'center',
                   shadowColor: '#000',
-                  shadowOffset: { width: 0, height: 4 },
+                  shadowOffset: { width: 0, height: 3 },
                   shadowOpacity: 0.3,
-                  shadowRadius: 8,
-                  elevation: 8,
+                  shadowRadius: 6,
+                  elevation: 6,
                 }}>
                   <Text style={{ 
                     fontSize: 24, 
@@ -164,6 +165,8 @@ function CustomTabBar({ state, descriptors, navigation, setShowPhotoPicker }) {
                     fontWeight: 'bold',
                     textAlign: 'center',
                     lineHeight: 24,
+                    includeFontPadding: false,
+                    textAlignVertical: 'center',
                   }}>
                     +
                   </Text>
@@ -195,16 +198,16 @@ function CustomTabBar({ state, descriptors, navigation, setShowPhotoPicker }) {
                 style={{
                   alignItems: 'center',
                   justifyContent: 'center',
-                  paddingVertical: 8,
-                  minHeight: 44,
+                  paddingVertical: 6,
+                  minHeight: 40,
                 }}
               >
                 <Animated.View style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 16,
+                  width: 28,
+                  height: 28,
+                  borderRadius: 14,
                   overflow: 'hidden',
-                  marginBottom: 4,
+                  marginBottom: 3,
                   borderWidth: isFocused ? 2 : 0,
                   borderColor: '#FFFFFF',
                   transform: [{ scale: scaleAnimations[route.key] || 1 }],
@@ -226,12 +229,12 @@ function CustomTabBar({ state, descriptors, navigation, setShowPhotoPicker }) {
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}>
-                      <Text style={{ color: '#FFFFFF', fontSize: 16 }}>👤</Text>
+                      <Ionicons name="person" size={16} color="#FFFFFF" />
                     </View>
                   )}
                 </Animated.View>
                 <Text style={{
-                  fontSize: 12,
+                  fontSize: 11,
                   color: '#FFFFFF',
                   fontWeight: isFocused ? '600' : '400',
                 }}>
@@ -249,16 +252,16 @@ function CustomTabBar({ state, descriptors, navigation, setShowPhotoPicker }) {
                 style={{
                   alignItems: 'center',
                   justifyContent: 'center',
-                  paddingVertical: 8,
-                  minHeight: 44,
+                  paddingVertical: 6,
+                  minHeight: 40,
                 }}
               >
               <Animated.View style={{
-                width: 32,
-                height: 32,
+                width: 28,
+                height: 28,
                 alignItems: 'center',
                 justifyContent: 'center',
-                marginBottom: 4,
+                marginBottom: 3,
                 transform: [{ scale: scaleAnimations[route.key] || 1 }],
               }}>
                 <Image
@@ -273,12 +276,12 @@ function CustomTabBar({ state, descriptors, navigation, setShowPhotoPicker }) {
                 />
               </Animated.View>
               <Text style={{
-                fontSize: 12,
+                fontSize: 11,
                 color: '#FFFFFF',
                 fontWeight: isFocused ? '600' : '400',
               }}>
                 {route.name === 'Home' ? 'Home' : 
-                 route.name === 'Leaderboard' ? 'Leaderboard' : 
+                 route.name === 'Leaderboard' ? 'Board' : 
                  route.name === 'Groups' ? 'Groups' : route.name}
               </Text>
             </TouchableOpacity>
@@ -466,13 +469,13 @@ function MainNavigator({ route }) {
 
   // Check if profile is completed
   // For new users (justSignedUp), always show ProfileSetup
-  // For returning users, check if profile is completed
-  const shouldShowProfileSetup = justSignedUp || (userData && userData.profileCompleted !== true);
+  // For returning users, only show ProfileSetup if we have userData and profile is explicitly not completed
+  const shouldShowProfileSetup = justSignedUp || (userData && userData.profileCompleted === false);
   
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
-      {shouldShowProfileSetup ? (
-        // Profile not completed - show ProfileSetup
+      {shouldShowProfileSetup && userData ? (
+        // Profile not completed - show ProfileSetup (only if we have userData)
         <Stack.Screen name="ProfileSetup" component={ProfileSetupScreen} />
       ) : userGroups.length === 0 ? (
         // No groups - show screens without tab bar

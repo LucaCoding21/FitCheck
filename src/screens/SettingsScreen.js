@@ -90,13 +90,37 @@ export default function SettingsScreen({ navigation }) {
             icon="shield-outline"
             title="Privacy Policy"
             subtitle="Read our privacy policy"
-            onPress={() => handleComingSoon('Privacy Policy')}
+            onPress={() => {
+              Alert.alert(
+                'Privacy Policy',
+                'Our privacy policy is available at:\n\nhttps://fitcheck.app/privacy\n\nPlease review it to understand how we collect, use, and protect your data.',
+                [
+                  { text: 'OK', style: 'default' },
+                  { text: 'Copy Link', onPress: () => {
+                    // In a real app, you'd copy this to clipboard
+                    Alert.alert('Link Copied', 'Privacy policy link copied to clipboard');
+                  }}
+                ]
+              );
+            }}
           />
           <SettingsItem
             icon="document-text-outline"
             title="Terms of Service"
             subtitle="Read our terms of service"
-            onPress={() => handleComingSoon('Terms of Service')}
+            onPress={() => {
+              Alert.alert(
+                'Terms of Service',
+                'Our terms of service are available at:\n\nhttps://fitcheck.app/terms\n\nPlease review them to understand your rights and responsibilities.',
+                [
+                  { text: 'OK', style: 'default' },
+                  { text: 'Copy Link', onPress: () => {
+                    // In a real app, you'd copy this to clipboard
+                    Alert.alert('Link Copied', 'Terms of service link copied to clipboard');
+                  }}
+                ]
+              );
+            }}
           />
           <SettingsItem
             icon="lock-closed-outline"

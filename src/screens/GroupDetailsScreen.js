@@ -289,7 +289,42 @@ export default function GroupDetailsScreen({ navigation, route }) {
         if (isEditMode) {
           setEditingGroupImage(result.assets[0].uri);
         } else {
-          setGroupImage(result.assets[0].uri);
+          // If not in edit mode, automatically save the image
+          setLoading(true);
+          try {
+            const imageURL = await uploadImageToFirebase(result.assets[0].uri);
+            
+            // Update group document with image URL
+            await updateDoc(doc(db, 'groups', groupId), {
+              groupImageURL: imageURL,
+              updatedAt: new Date(),
+            });
+
+            // Update local state
+            setGroupImage(imageURL);
+            setGroupData(prev => ({
+              ...prev,
+              groupImageURL: imageURL,
+            }));
+
+            Toast.show({
+              type: 'success',
+              text1: 'Group picture updated',
+              position: 'bottom',
+              visibilityTime: 2000,
+              autoHide: true,
+              bottomOffset: 60,
+            });
+          } catch (uploadError) {
+            console.error('Image upload failed:', uploadError);
+            Alert.alert(
+              'Image Upload Failed', 
+              'Failed to upload group picture. Please try again.',
+              [{ text: 'OK' }]
+            );
+          } finally {
+            setLoading(false);
+          }
         }
       }
     } catch (error) {
@@ -621,13 +656,25 @@ export default function GroupDetailsScreen({ navigation, route }) {
               <Text style={styles.saveButtonText}>Save</Text>
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity
-              style={styles.menuButton}
-              onPress={menuVisible ? closeMenu : openMenu}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="ellipsis-horizontal" size={20} color={theme.colors.text} />
-            </TouchableOpacity>
+            <View style={styles.headerButtons}>
+              <TouchableOpacity
+                style={styles.flameButton}
+                onPress={() => navigation.navigate('HallOfFlame', { 
+                  selectedGroup: groupId,
+                  selectedGroupName: groupData?.name || groupName
+                })}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="flame" size={20} color="#CD9F3E" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.menuButton}
+                onPress={menuVisible ? closeMenu : openMenu}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="ellipsis-horizontal" size={20} color={theme.colors.text} />
+              </TouchableOpacity>
+            </View>
           )}
         </Animated.View>
 
@@ -642,31 +689,39 @@ export default function GroupDetailsScreen({ navigation, route }) {
           ]}
         >
           {/* Group Profile Picture */}
-          <View style={styles.groupImageContainer}>
-            {(isEditMode ? editingGroupImage : groupImage) ? (
+          {(isEditMode ? editingGroupImage : groupImage) ? (
+            // If there's an image, show it without making it clickable (unless in edit mode)
+            <View style={styles.groupImageContainer}>
               <OptimizedImage source={{ uri: isEditMode ? editingGroupImage : groupImage }} style={styles.groupImage} />
-            ) : (
+              
+              {/* Change cover photo overlay in edit mode */}
+              {isEditMode && (
+                <TouchableOpacity
+                  style={styles.changePhotoOverlay}
+                  onPress={pickImage}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.changePhotoButton}>
+                    <Ionicons name="camera" size={16} color={theme.colors.text} />
+                    <Text style={styles.changePhotoText}>Change cover photo</Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+            </View>
+          ) : (
+            // If no image, make it clickable to add one
+            <TouchableOpacity
+              style={styles.groupImageContainer}
+              onPress={pickImage}
+              activeOpacity={0.8}
+            >
               <View style={styles.imagePlaceholder}>
                 <Text style={styles.placeholderText}>
                   {isEditMode ? 'tap to add photo' : 'add photo'}
                 </Text>
               </View>
-            )}
-            
-            {/* Change cover photo overlay in edit mode */}
-            {isEditMode && (
-              <TouchableOpacity
-                style={styles.changePhotoOverlay}
-                onPress={pickImage}
-                activeOpacity={0.8}
-              >
-                <View style={styles.changePhotoButton}>
-                  <Ionicons name="camera" size={16} color={theme.colors.text} />
-                  <Text style={styles.changePhotoText}>Change cover photo</Text>
-                </View>
-              </TouchableOpacity>
-            )}
-          </View>
+            </TouchableOpacity>
+          )}
           
           {/* Group Code */}
           {groupData?.code && (
@@ -929,6 +984,17 @@ const styles = StyleSheet.create({
     color: '#FF6B35',
     fontWeight: '600',
   },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  flameButton: {
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   menuButton: {
     width: 44,
     height: 44,
@@ -1178,6 +1244,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderRadius: 12,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   modalButtonSecondaryText: {
     fontSize: 16,

@@ -13,6 +13,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
@@ -253,7 +254,7 @@ export default function FitDetailsScreen({ navigation, route }) {
                     />
                   ) : (
                     <View style={styles.placeholderProfile}>
-                      <Text style={styles.placeholderProfileText}>👤</Text>
+                      <Ionicons name="person" size={24} color="#FFFFFF" />
                     </View>
                   )}
                 </View>
@@ -379,7 +380,7 @@ const styles = StyleSheet.create({
   },
   imageSection: {
     width: '100%',
-    height: height * 0.58, // Reduced to 58% for more compact layout
+    aspectRatio: 3/4, // iPhone photo perfect ratio (vertical)
     backgroundColor: '#000000',
   },
   fitImage: {

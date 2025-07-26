@@ -9,6 +9,7 @@ import {
   FlatList,
   ActivityIndicator,
   Dimensions,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
@@ -26,17 +27,19 @@ import WinnerArchiveCard from '../components/WinnerArchiveCard';
 
 const { width } = Dimensions.get('window');
 
+
+
 export default function HallOfFlameScreen({ navigation, route }) {
   const { user } = useAuth();
   const selectedGroup = route?.params?.selectedGroup || 'all';
+  const selectedGroupName = route?.params?.selectedGroupName || 'All';
   const winnerFitId = route?.params?.winnerFitId || null;
   const celebrationMode = route?.params?.celebrationMode || false;
-  const initialArchiveMode = route?.params?.archiveMode || false;
+
   const [winnerHistory, setWinnerHistory] = useState([]);
   const [celebratedFit, setCelebratedFit] = useState(null);
   const [loading, setLoading] = useState(true);
   const [archiveLoading, setArchiveLoading] = useState(false);
-  const [archiveMode, setArchiveMode] = useState(initialArchiveMode);
   const [hasMoreWinners, setHasMoreWinners] = useState(true);
   const [archiveOffset, setArchiveOffset] = useState(0);
   const isMountedRef = useRef(true);
@@ -48,7 +51,7 @@ export default function HallOfFlameScreen({ navigation, route }) {
     if (celebrationMode && winnerFitId) {
       fetchCelebratedFit();
     } else {
-      fetchHistory();
+      fetchArchive(0, false);
     }
     
     return () => { 
@@ -59,18 +62,16 @@ export default function HallOfFlameScreen({ navigation, route }) {
     };
   }, [user?.uid, selectedGroup, winnerFitId, celebrationMode]);
 
-  useEffect(() => {
-    // If archiveMode was passed as a parameter, fetch archive data
-    if (initialArchiveMode && !celebrationMode && !loading) {
-      handleArchiveModeToggle();
-    }
-  }, [initialArchiveMode, loading, celebrationMode]);
+
 
   const fetchCelebratedFit = async () => {
     if (!winnerFitId) return;
 
     try {
       setLoading(true);
+      
+
+      
       const fitRef = doc(db, 'fits', winnerFitId);
       
       const unsubscribe = onSnapshot(fitRef, (doc) => {
@@ -88,23 +89,17 @@ export default function HallOfFlameScreen({ navigation, route }) {
     }
   };
 
-  const fetchHistory = async () => {
-    if (!user?.uid || !selectedGroup) {
-      setWinnerHistory([]);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    const history = await getWinnerHistoryForGroup(user.uid, selectedGroup);
-    if (isMountedRef.current) setWinnerHistory(history);
-    setLoading(false);
-  };
+
 
   const fetchArchive = async (offset = 0, append = false) => {
     if (!user?.uid || !selectedGroup) return;
 
     try {
       setArchiveLoading(true);
+      if (!append) {
+        setLoading(true); // Set main loading state for initial fetch
+      }
+      
       const archive = await getWinnerArchiveForGroup(user.uid, selectedGroup, 20, offset);
       
       if (isMountedRef.current) {
@@ -119,28 +114,19 @@ export default function HallOfFlameScreen({ navigation, route }) {
     } catch (error) {
       console.error('Error fetching archive:', error);
     } finally {
-      if (isMountedRef.current) setArchiveLoading(false);
+      if (isMountedRef.current) {
+        setArchiveLoading(false);
+        if (!append) {
+          setLoading(false); // Clear main loading state for initial fetch
+        }
+      }
     }
   };
 
-  const handleArchiveModeToggle = async () => {
-    if (archiveMode) {
-      // Switch back to recent winners
-      setArchiveMode(false);
-      setArchiveOffset(0);
-      setHasMoreWinners(true);
-      fetchHistory();
-    } else {
-      // Switch to archive mode
-      setArchiveMode(true);
-      setArchiveOffset(0);
-      setHasMoreWinners(true);
-      await fetchArchive(0, false);
-    }
-  };
+
 
   const handleLoadMore = () => {
-    if (!archiveLoading && hasMoreWinners && archiveMode) {
+    if (!archiveLoading && hasMoreWinners) {
       fetchArchive(archiveOffset, true);
     }
   };
@@ -159,9 +145,11 @@ export default function HallOfFlameScreen({ navigation, route }) {
     navigation.goBack();
   };
 
-  const renderWinnerCard = ({ item }) => {
+  const renderWinnerCard = ({ item, index }) => {
     const isCurrentUser = item.winner?.userId === user?.uid;
     const showGroupName = selectedGroup === 'all' && item.groupName;
+    const isFirstInRow = index % 2 === 0;
+    const isLastInRow = index % 2 === 1;
     
     return (
       <WinnerArchiveCard
@@ -169,6 +157,8 @@ export default function HallOfFlameScreen({ navigation, route }) {
         onPress={() => handleWinnerPress(item)}
         isCurrentUser={isCurrentUser}
         showGroupName={showGroupName}
+        isFirstInRow={isFirstInRow}
+        isLastInRow={isLastInRow}
       />
     );
   };
@@ -187,12 +177,9 @@ export default function HallOfFlameScreen({ navigation, route }) {
   const renderHeader = () => (
     <View style={styles.headerSection}>
       <Text style={styles.headerTitle}>
-        {archiveMode ? 'Winner Archive' : 'Recent Winners'}
-      </Text>
-      <Text style={styles.headerSubtitle}>
         {selectedGroup === 'all' 
-          ? 'All groups' 
-          : selectedGroup
+          ? 'All Groups\' Hall of Flame' 
+          : `${selectedGroupName}'s Hall of Flame`
         }
       </Text>
     </View>
@@ -219,15 +206,14 @@ export default function HallOfFlameScreen({ navigation, route }) {
       if (selectedGroup === 'all') {
         return celebratedFit.groupName || 'Group';
       }
-      return selectedGroup;
+      return selectedGroupName;
     };
 
     const handleGroupArchivePress = () => {
       // Navigate to the specific group's Hall of Flame archive
       const targetGroup = selectedGroup === 'all' ? 'all' : selectedGroup;
       navigation.navigate('HallOfFlame', { 
-        selectedGroup: targetGroup,
-        archiveMode: true
+        selectedGroup: targetGroup
       });
     };
 
@@ -248,46 +234,106 @@ export default function HallOfFlameScreen({ navigation, route }) {
           <View style={styles.headerSpacer} />
         </View>
 
-        <View style={styles.celebrationContainer}>
-          {/* Fit Image */}
-          <View style={styles.fitImageContainer}>
-            <OptimizedImage
-              source={{ uri: celebratedFit.imageURL }}
-              style={styles.fitImage}
-              contentFit="cover"
-              showLoadingIndicator={true}
-            />
-          </View>
+        <ScrollView 
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollViewContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.celebrationContainer}>
 
-          {/* Fit Info */}
-          <View style={styles.fitInfo}>
-            <Text style={styles.fitUserName}>
-              {celebratedFit.userName || 'Unknown User'}
-            </Text>
-            <Text style={styles.fitGroupName}>
-              {selectedGroup === 'all' ? 'All Groups' : 'Group'}
-            </Text>
-            {celebratedFit.caption && (
-              <Text style={styles.fitCaption}>"{celebratedFit.caption}"</Text>
-            )}
-            {celebratedFit.tag && (
-              <Text style={styles.fitTag}>#{celebratedFit.tag}</Text>
-            )}
-          </View>
 
-          {/* Group Archive Button */}
-          <TouchableOpacity
-            style={styles.groupArchiveButton}
-            onPress={handleGroupArchivePress}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="trophy" size={20} color="#B5483D" />
-            <Text style={styles.groupArchiveText}>
-              View {getGroupDisplayName()} Hall of Flame
-            </Text>
-            <Ionicons name="chevron-forward" size={20} color="#B5483D" />
-          </TouchableOpacity>
-        </View>
+            {/* Winner's Fit - Hero Image */}
+            <View style={styles.fitHeroContainer}>
+              <OptimizedImage
+                source={{ uri: celebratedFit.imageURL }}
+                style={styles.fitHeroImage}
+                contentFit="cover"
+                showLoadingIndicator={true}
+              />
+              
+              {/* Winner Badge Overlay */}
+              <View style={styles.winnerBadgeOverlay}>
+                <Ionicons name="trophy" size={24} color="#FFD700" />
+                <Text style={styles.winnerBadgeText}>WINNER</Text>
+              </View>
+              
+              {/* Tag Overlay */}
+              {celebratedFit.tag && (
+                <View style={styles.tagOverlay}>
+                  <Text style={styles.tagOverlayText}>#{celebratedFit.tag}</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Winner Info Section */}
+            <View style={styles.winnerInfoSection}>
+              {/* User Profile Row */}
+              <View style={styles.userProfileRow}>
+                <View style={styles.profileImageContainer}>
+                  {celebratedFit.userProfileImageURL ? (
+                    <OptimizedImage
+                      source={{ uri: celebratedFit.userProfileImageURL }}
+                      style={styles.profileImage}
+                      showLoadingIndicator={false}
+                    />
+                  ) : (
+                    <View style={styles.profilePlaceholder}>
+                      <Ionicons name="person" size={24} color="#FFFFFF" />
+                    </View>
+                  )}
+                </View>
+                              <View style={styles.userInfo}>
+                <Text style={styles.userName}>
+                  {celebratedFit.userName || 'Unknown User'}
+                </Text>
+                <Text style={styles.userSubtitle}>
+                  {selectedGroup === 'all' ? 'All Groups' : getGroupDisplayName()}
+                </Text>
+              </View>
+              </View>
+
+              {/* Rating Stats */}
+              <View style={styles.ratingStatsContainer}>
+                <View style={styles.ratingStat}>
+                  <Ionicons name="star" size={20} color="#FFD700" />
+                  <Text style={styles.ratingValue}>
+                    {celebratedFit.averageRating?.toFixed(1) || '0.0'}
+                  </Text>
+                  <Text style={styles.ratingLabel}>Average</Text>
+                </View>
+                <View style={styles.ratingDivider} />
+                <View style={styles.ratingStat}>
+                  <Ionicons name="people" size={20} color="#FFD700" />
+                  <Text style={styles.ratingValue}>
+                    {celebratedFit.ratingCount || '0'}
+                  </Text>
+                  <Text style={styles.ratingLabel}>Ratings</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Fit Details Section */}
+            <View style={styles.fitDetailsSection}>
+              {celebratedFit.caption && (
+                <Text style={styles.fitCaption}>"{celebratedFit.caption}"</Text>
+              )}
+            </View>
+
+            {/* Action Button */}
+            <View style={styles.actionButtonsSection}>
+              <TouchableOpacity
+                style={styles.primaryButton}
+                onPress={handleGroupArchivePress}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="trophy" size={20} color="#FFFFFF" />
+                <Text style={styles.primaryButtonText}>
+                  View All Winners
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -306,7 +352,7 @@ export default function HallOfFlameScreen({ navigation, route }) {
           >
             <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Hall of Flame</Text>
+          <Text style={styles.headerTitle}>Past Winners</Text>
           <View style={styles.headerSpacer} />
         </View>
 
@@ -316,12 +362,9 @@ export default function HallOfFlameScreen({ navigation, route }) {
           <Text style={styles.emptyTitle}>
             No Winners Yet
           </Text>
-          <Text style={styles.emptyText}>
-            {archiveMode 
-              ? 'No historical winners found. Start posting fits to build the archive!'
-              : 'Yesterday\'s competition is still being calculated. Check back soon!'
-            }
-          </Text>
+                        <Text style={styles.emptyText}>
+                No historical winners found. Start posting fits to build the archive!
+              </Text>
         </View>
       </SafeAreaView>
     );
@@ -331,28 +374,18 @@ export default function HallOfFlameScreen({ navigation, route }) {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
       
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={handleBackPress}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Hall of Flame</Text>
-        <TouchableOpacity
-          style={styles.archiveToggleButton}
-          onPress={handleArchiveModeToggle}
-          activeOpacity={0.7}
-        >
-          <Ionicons 
-            name={archiveMode ? "time" : "archive"} 
-            size={20} 
-            color={theme.colors.secondary} 
-          />
-        </TouchableOpacity>
-      </View>
+              {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={handleBackPress}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Past Winners</Text>
+          <View style={styles.headerSpacer} />
+        </View>
 
       <FlatList
         data={winnerHistory}
@@ -363,21 +396,17 @@ export default function HallOfFlameScreen({ navigation, route }) {
         onEndReached={handleLoadMore}
         onEndReachedThreshold={0.1}
         numColumns={2}
-        columnWrapperStyle={styles.row}
         ListHeaderComponent={renderHeader}
         ListFooterComponent={renderFooter}
         ListEmptyComponent={
           !archiveLoading && (
             <View style={styles.emptyContainer}>
-              <Ionicons name="images" size={80} color={theme.colors.textMuted} />
+              <Ionicons name="flame" size={80} color={theme.colors.textMuted} />
               <Text style={styles.emptyTitle}>
-                {archiveMode ? 'No Archive Yet' : 'No Winner Yet'}
+                No Archive Yet
               </Text>
               <Text style={styles.emptyText}>
-                {archiveMode 
-                  ? 'No historical winners found. Start posting fits to build the archive!'
-                  : 'Yesterday\'s competition is still being calculated. Check back soon!'
-                }
+                No historical winners found. Start posting fits to build the archive!
               </Text>
             </View>
           )
@@ -418,22 +447,11 @@ const styles = StyleSheet.create({
   headerSpacer: {
     width: 44,
   },
-  archiveToggleButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: theme.colors.surface,
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...theme.shadows.sm,
-  },
+
   flatListContent: {
     paddingBottom: 40,
   },
-  row: {
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-  },
+
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -474,7 +492,7 @@ const styles = StyleSheet.create({
   },
   headerSection: {
     paddingHorizontal: 20,
-    paddingVertical: 24,
+    paddingVertical: 14,
   },
   headerTitle: {
     fontSize: 28,
@@ -486,35 +504,129 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: theme.colors.textSecondary,
   },
-  celebrationContainer: {
+  scrollView: {
     flex: 1,
+  },
+  scrollViewContent: {
+    paddingBottom: 40,
+  },
+  celebrationContainer: {
     paddingHorizontal: 20,
   },
-  fitImageContainer: {
+
+  fitHeroContainer: {
     width: '100%',
-    aspectRatio: 1,
+    aspectRatio: 3/4,
     borderRadius: 12,
     overflow: 'hidden',
     marginBottom: 20,
     ...theme.shadows.lg,
+    position: 'relative',
   },
-  fitImage: {
+  fitHeroImage: {
     width: '100%',
     height: '100%',
   },
-  fitInfo: {
-    paddingHorizontal: 4,
+  winnerBadgeOverlay: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 10,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
   },
-  fitUserName: {
+  winnerBadgeText: {
+    color: '#FFD700',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  tagOverlay: {
+    position: 'absolute',
+    bottom: 10,
+    right: 10,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    borderRadius: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  tagOverlayText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  winnerInfoSection: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 20,
+    ...theme.shadows.sm,
+  },
+  userProfileRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  profileImageContainer: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    overflow: 'hidden',
+    marginRight: 15,
+  },
+  profileImage: {
+    width: '100%',
+    height: '100%',
+  },
+  profilePlaceholder: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: theme.colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 25,
+  },
+  userInfo: {
+    flex: 1,
+  },
+  userName: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: theme.colors.text,
+    marginBottom: 4,
+  },
+  userSubtitle: {
+    fontSize: 14,
+    color: theme.colors.textSecondary,
+  },
+  ratingStatsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 15,
+  },
+  ratingStat: {
+    alignItems: 'center',
+  },
+  ratingValue: {
     fontSize: 24,
     fontWeight: 'bold',
     color: theme.colors.text,
-    marginBottom: 8,
+    marginTop: 5,
   },
-  fitGroupName: {
-    fontSize: 16,
+  ratingLabel: {
+    fontSize: 12,
     color: theme.colors.textSecondary,
-    marginBottom: 16,
+  },
+  ratingDivider: {
+    width: 1,
+    height: '100%',
+    backgroundColor: theme.colors.border,
+  },
+  fitDetailsSection: {
+    marginBottom: 20,
   },
   fitCaption: {
     fontSize: 18,
@@ -523,26 +635,27 @@ const styles = StyleSheet.create({
     lineHeight: 26,
     marginBottom: 12,
   },
-  fitTag: {
-    fontSize: 16,
-    color: theme.colors.primary,
-    fontWeight: '600',
+
+
+  actionButtonsSection: {
+    marginTop: 0,
   },
-  groupArchiveButton: {
+  primaryButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: theme.colors.surface,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    justifyContent: 'center',
+    backgroundColor: theme.colors.primary,
+    paddingVertical: 14,
+    paddingHorizontal: 25,
     borderRadius: 12,
-    marginTop: 20,
+    marginBottom: 15,
     ...theme.shadows.sm,
   },
-  groupArchiveText: {
+  primaryButtonText: {
+    color: '#FFFFFF',
     fontSize: 16,
-    color: '#B5483D',
-    fontWeight: '600',
-    marginHorizontal: 10,
+    fontWeight: 'bold',
+    marginLeft: 10,
   },
+
 }); 

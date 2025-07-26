@@ -7,7 +7,7 @@ import {
   Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { doc, updateDoc, getDoc } from "firebase/firestore";
+import { doc, updateDoc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "../config/firebase";
 import { useAuth } from "../contexts/AuthContext";
 import { theme } from "../styles/theme";
@@ -50,7 +50,7 @@ function FitCard({ fit, onCommentSectionOpen, onOpenCommentModal }) {
   const [fairRating, setFairRating] = useState(fit.fairRating || 0);
   const [ratingCount, setRatingCount] = useState(fit.ratingCount || 0);
   const [comments, setComments] = useState(fit.comments || []);
-  const [groupName, setGroupName] = useState("");
+  const [groupNames, setGroupNames] = useState("");
   const [userData, setUserData] = useState(null);
 
   // Memoize expensive calculations
@@ -89,6 +89,7 @@ function FitCard({ fit, onCommentSectionOpen, onOpenCommentModal }) {
 
   useEffect(() => {
     calculateFairRating();
+    fetchGroupNames();
     // Use the user data that's already stored in the fit document
     if (fit.userName || fit.userProfileImageURL) {
       setUserData({
@@ -118,6 +119,51 @@ function FitCard({ fit, onCommentSectionOpen, onOpenCommentModal }) {
     }
   }, [fit.userId]);
 
+  // Fetch group names for the fit's groupIds
+  const fetchGroupNames = useCallback(async () => {
+    try {
+      if (!fit.groupIds || fit.groupIds.length === 0) {
+        setGroupNames("");
+        return;
+      }
+
+      // Fetch all group documents for the fit's groupIds
+      const groupPromises = fit.groupIds.map(async (groupId) => {
+        try {
+          const groupDoc = await getDoc(doc(db, "groups", groupId));
+          if (groupDoc.exists()) {
+            return groupDoc.data().name || "Unknown Group";
+          }
+          return "Unknown Group";
+        } catch (error) {
+          console.error(`Error fetching group ${groupId}:`, error);
+          return "Unknown Group";
+        }
+      });
+
+      const groupNamesArray = await Promise.all(groupPromises);
+      
+      // Smart group name display logic
+      if (groupNamesArray.length === 1) {
+        // Single group: show the group name
+        setGroupNames(groupNamesArray[0]);
+      } else if (groupNamesArray.length === 2) {
+        // Two groups: show both names
+        setGroupNames(groupNamesArray.join(", "));
+      } else if (groupNamesArray.length <= 4) {
+        // 3-4 groups: show first two + "and X more"
+        const firstTwo = groupNamesArray.slice(0, 2).join(", ");
+        const remaining = groupNamesArray.length - 2;
+        setGroupNames(`${firstTwo} and ${remaining} more`);
+      } else {
+        // 5+ groups: show "Multiple Groups" for privacy and cleanliness
+        setGroupNames("Multiple Groups");
+      }
+    } catch (error) {
+      console.error("Error fetching group names:", error);
+      setGroupNames("Group");
+    }
+  }, [fit.groupIds]);
 
 
   const calculateFairRating = useCallback(() => {
@@ -251,14 +297,7 @@ function FitCard({ fit, onCommentSectionOpen, onOpenCommentModal }) {
     return `${diffInHours} hours ago`;
   }, []);
 
-  // Simple group name fallback - no Firestore queries
-  useEffect(() => {
-    if (fit.groupIds && fit.groupIds.length > 0) {
-      // For now, just show "Group" instead of fetching the actual name
-      // This eliminates the Firestore query per FitCard
-      setGroupName("Group");
-    }
-  }, [fit.groupIds]);
+
 
   const handleCommentAdded = useCallback((newComment) => {
     // Don't add to local state - let the real-time update handle it
@@ -369,7 +408,7 @@ function FitCard({ fit, onCommentSectionOpen, onOpenCommentModal }) {
               {getUserDisplayName()}
             </Text>
             <Text style={styles.timestamp}>
-              {formatTimeAgo(fit.createdAt || fit.timestamp)} • {groupName}
+              {formatTimeAgo(fit.createdAt || fit.timestamp)} • {groupNames}
             </Text>
           </View>
         </View>
@@ -391,9 +430,13 @@ function FitCard({ fit, onCommentSectionOpen, onOpenCommentModal }) {
             <Text style={styles.caption}>{fit.caption}</Text>
           )}
           {fit.tag && (
-            <Text style={styles.hashtags}>
-              {fit.tag.split(/[,\s]+/).filter(tag => tag.trim()).map(tag => `#${tag.trim()}`).join(' ')}
-            </Text>
+            <View style={styles.hashtagsContainer}>
+              {fit.tag.split(/[,\s]+/).filter(tag => tag.trim()).map((tag, index) => (
+                <View key={index} style={styles.hashtagTag}>
+                  <Text style={styles.hashtagText}>#{tag.trim()}</Text>
+                </View>
+              ))}
+            </View>
           )}
         </View>
       )}
@@ -557,13 +600,27 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#FFFFFF',
     lineHeight: 22,
-    marginBottom: 8,
+    marginTop: -3,
+    marginBottom: 3,
   },
-  hashtags: {
-    fontSize: 16,
-    color: '#FF6B6B',
-    fontWeight: '700',
-    letterSpacing: 0.5,
+  hashtagsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
+  },
+  hashtagTag: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  hashtagText: {
+    fontSize: 14,
+    color: '#FFFFFF',
+    fontWeight: '600',
   },
 
   // Image styles
@@ -572,7 +629,7 @@ const styles = StyleSheet.create({
   },
   image: {
     width: '100%',
-    aspectRatio: 3 / 3,
+    aspectRatio: 3 / 4,
     borderRadius: 8,
   },
   placeholderImage: {

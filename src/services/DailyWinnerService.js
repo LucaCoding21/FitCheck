@@ -50,8 +50,32 @@ export const calculateAndSaveGroupWinner = async (date, group, userId) => {
       return null;
     }
     
-    // Sort by fairRating (updated field name)
-    const sorted = eligibleFits.sort((a, b) => (b.fairRating || 0) - (a.fairRating || 0));
+    // Sort with tie-breaking logic:
+    // 1. Primary: Average rating (highest first)
+    // 2. Secondary: Number of ratings (more ratings wins)
+    // 3. Tertiary: Posting time (earlier post wins)
+    const sorted = eligibleFits.sort((a, b) => {
+      const aRating = a.fairRating || 0;
+      const bRating = b.fairRating || 0;
+      const aCount = a.ratingCount || 0;
+      const bCount = b.ratingCount || 0;
+      const aTime = a.createdAt?.toMillis?.() || a.createdAt?.seconds || 0;
+      const bTime = b.createdAt?.toMillis?.() || b.createdAt?.seconds || 0;
+      
+      // Primary: Compare average ratings
+      if (aRating !== bRating) {
+        return bRating - aRating; // Higher rating wins
+      }
+      
+      // Secondary: If ratings are tied, compare rating counts
+      if (aCount !== bCount) {
+        return bCount - aCount; // More ratings wins
+      }
+      
+      // Tertiary: If rating counts are tied, compare posting times
+      return aTime - bTime; // Earlier post wins
+    });
+    
     const winner = sorted[0];
     if (!winner) return null;
     
@@ -122,8 +146,32 @@ export const calculateAndSaveAllWinner = async (date, userGroups, userId) => {
     
     if (!eligibleFits.length) return null;
     
-    // Sort by fairRating (updated field name)
-    const sorted = eligibleFits.sort((a, b) => (b.fairRating || 0) - (a.fairRating || 0));
+    // Sort with tie-breaking logic:
+    // 1. Primary: Average rating (highest first)
+    // 2. Secondary: Number of ratings (more ratings wins)
+    // 3. Tertiary: Posting time (earlier post wins)
+    const sorted = eligibleFits.sort((a, b) => {
+      const aRating = a.fairRating || 0;
+      const bRating = b.fairRating || 0;
+      const aCount = a.ratingCount || 0;
+      const bCount = b.ratingCount || 0;
+      const aTime = a.createdAt?.toMillis?.() || a.createdAt?.seconds || 0;
+      const bTime = b.createdAt?.toMillis?.() || b.createdAt?.seconds || 0;
+      
+      // Primary: Compare average ratings
+      if (aRating !== bRating) {
+        return bRating - aRating; // Higher rating wins
+      }
+      
+      // Secondary: If ratings are tied, compare rating counts
+      if (aCount !== bCount) {
+        return bCount - aCount; // More ratings wins
+      }
+      
+      // Tertiary: If rating counts are tied, compare posting times
+      return aTime - bTime; // Earlier post wins
+    });
+    
     const winner = sorted[0];
     if (!winner) return null;
     

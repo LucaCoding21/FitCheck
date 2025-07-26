@@ -12,6 +12,8 @@ import OptimizedImage from './OptimizedImage';
 import { formatRating } from '../utils/ratingUtils';
 import { getYesterdayWinner } from '../services/DailyWinnerService';
 
+
+
 const PinnedWinnerCard = ({ onPress, navigation, selectedGroup }) => {
   const { user } = useAuth();
   const [yesterdayWinner, setYesterdayWinner] = useState(null);
@@ -26,6 +28,7 @@ const PinnedWinnerCard = ({ onPress, navigation, selectedGroup }) => {
         return;
       }
       setLoading(true);
+      
       const winnerData = await getYesterdayWinner(user.uid, selectedGroup);
       if (isMountedRef.current && winnerData && winnerData.winner) {
         setYesterdayWinner(winnerData.winner);
@@ -60,10 +63,20 @@ const PinnedWinnerCard = ({ onPress, navigation, selectedGroup }) => {
 
   if (loading) {
     return (
-      <View style={styles.cardContainer}>
-        <View style={styles.placeholderContent}>
-          <Ionicons name="trophy" size={28} color="#FFD700" style={{ marginBottom: 4 }} />
-          <Text style={styles.placeholderTitle}>Loading...</Text>
+      <View style={styles.container}>
+        <View style={styles.card}>
+          <View style={styles.winnerBanner}>
+            {/* User Info Section - Same layout as winner card */}
+            <View style={styles.userSection}>
+              <View style={styles.loadingIconContainer}>
+                <Ionicons name="trophy" size={20} color="#FFD700" />
+              </View>
+              <View style={styles.userInfo}>
+                <Text style={styles.username}>Loading...</Text>
+                <Text style={styles.groupName}>Fetching yesterday's winner</Text>
+              </View>
+            </View>
+          </View>
         </View>
       </View>
     );
@@ -71,11 +84,21 @@ const PinnedWinnerCard = ({ onPress, navigation, selectedGroup }) => {
 
   if (!yesterdayWinner) {
     return (
-      <View style={styles.cardContainer}>
-        <View style={styles.placeholderContent}>
-          <Ionicons name="trophy" size={28} color="#FFD700" style={{ marginBottom: 4 }} />
-          <Text style={styles.placeholderTitle}>No Winner Yet</Text>
-          <Text style={styles.placeholderSubtitle}>Check back tomorrow to see who claimed the crown!</Text>
+      <View style={styles.container}>
+        <View style={styles.card}>
+          <View style={styles.winnerBanner}>
+            {/* User Info Section - Same layout as winner card */}
+            <View style={styles.userSection}>
+              <View style={styles.noWinnerIconContainer}>
+                <Ionicons name="trophy-outline" size={20} color="#71717A" />
+              </View>
+              <View style={styles.userInfo}>
+                <Text style={styles.username}>No Winner Yesterday</Text>
+                <Text style={styles.groupName}>No fits were posted or rated</Text>
+              </View>
+            </View>
+
+          </View>
         </View>
       </View>
     );
@@ -110,7 +133,7 @@ const PinnedWinnerCard = ({ onPress, navigation, selectedGroup }) => {
                 {yesterdayWinner.userName || 'Unknown User'}
               </Text>
               <Text style={styles.groupName} numberOfLines={1}>
-                {selectedGroup === 'all' ? 'All Groups' : yesterdayWinner.groupName || 'Group'}
+                {selectedGroup === 'all' ? 'All Groups' : selectedGroup}
               </Text>
             </View>
           </View>
@@ -178,7 +201,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     overflow: 'hidden',
     marginRight: 12,
-    aspectRatio: 1,
+    aspectRatio: 3/4,
   },
   profileImage: {
     width: '100%',
@@ -242,36 +265,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cardContainer: {
-    backgroundColor: '#2A2A2A',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    marginHorizontal: 8,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
+
+  noWinnerIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#4A4A4A',
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 12,
   },
-  placeholderContent: {
+  loadingIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 215, 0, 0.15)',
     alignItems: 'center',
-  },
-  placeholderTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    marginBottom: 8,
-  },
-  placeholderSubtitle: {
-    fontSize: 14,
-    color: '#71717A',
-    textAlign: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
   },
 
 }); 

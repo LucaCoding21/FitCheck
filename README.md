@@ -122,5 +122,5 @@ src/
 - 📊 Weekly/monthly leaderboards
 - 🏆 Achievement badges
 - 📱 Push notifications for daily recaps
-- 👤 User profiles with fit history
+- User profiles with fit history
 - 🎯 Fit challenges and themes

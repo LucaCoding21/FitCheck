@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,6 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import OptimizedImage from '../components/OptimizedImage';
 
 const { width, height } = Dimensions.get('window');
 
@@ -19,7 +18,9 @@ export default function OnboardingScreen2({ navigation }) {
   const [fadeAnim] = useState(new Animated.Value(0));
   const [scaleAnim] = useState(new Animated.Value(0.8));
   const [slideAnim] = useState(new Animated.Value(30));
-
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageFadeAnim] = useState(new Animated.Value(0));
+  const spinAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.parallel([
@@ -41,8 +42,25 @@ export default function OnboardingScreen2({ navigation }) {
       }),
     ]).start();
 
-
+    // Start spinning animation
+    const spinAnimation = Animated.loop(
+      Animated.timing(spinAnim, {
+        toValue: 1,
+        duration: 1000,
+        useNativeDriver: true,
+      })
+    );
+    spinAnimation.start();
   }, []);
+
+  const handleImageLoad = () => {
+    setImageLoaded(true);
+    Animated.timing(imageFadeAnim, {
+      toValue: 1,
+      duration: 500,
+      useNativeDriver: true,
+    }).start();
+  };
 
   const handleGetStarted = () => {
     navigation.navigate('SignUp');
@@ -73,14 +91,37 @@ export default function OnboardingScreen2({ navigation }) {
         {/* Group Image Section */}
         <View style={styles.imageSection}>
           <View style={styles.imageContainer}>
-            <OptimizedImage
+            {!imageLoaded && (
+              <View style={styles.loadingContainer}>
+                <Animated.View 
+                  style={[
+                    styles.loadingSpinner, 
+                    { 
+                      opacity: fadeAnim,
+                      transform: [{
+                        rotate: spinAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: ['0deg', '360deg']
+                        })
+                      }]
+                    }
+                  ]}
+                >
+                  <Ionicons name="refresh" size={40} color="#666666" />
+                </Animated.View>
+              </View>
+            )}
+            <Animated.Image
               source={require('../../assets/group.png')}
-              style={styles.groupImage}
-              contentFit="cover"
-              showLoadingIndicator={true}
+              style={[
+                styles.groupImage,
+                {
+                  opacity: imageFadeAnim,
+                }
+              ]}
+              resizeMode="cover"
+              onLoad={handleImageLoad}
             />
-
-
           </View>
         </View>
 
@@ -162,6 +203,21 @@ const styles = StyleSheet.create({
   groupImage: {
     width: '100%',
     height: '100%',
+  },
+  loadingContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#2a2a2a',
+    borderRadius: 20,
+  },
+  loadingSpinner: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 
 

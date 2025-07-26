@@ -677,7 +677,7 @@ const styles = StyleSheet.create({
     paddingBottom: 140, // Increased to prevent overlap with post button
   },
   imageSection: {
-    aspectRatio: 1,
+    aspectRatio: 3/4,
     marginBottom: 20,
     borderRadius: 12,
     overflow: 'hidden',

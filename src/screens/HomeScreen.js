@@ -790,7 +790,7 @@ export default function HomeScreen({ navigation, route }) {
                 />
               ) : (
                 <View style={styles.profilePlaceholder}>
-                  <Text style={styles.profilePlaceholderText}>👤</Text>
+                  <Ionicons name="person" size={24} color="#FFFFFF" />
                 </View>
               )}
             </TouchableOpacity>

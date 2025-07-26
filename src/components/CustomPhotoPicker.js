@@ -209,7 +209,7 @@ const CustomPhotoPicker = ({ visible, onClose, onImageSelected }) => {
 
       const result = await ImagePicker.launchCameraAsync({
         allowsEditing: true,
-        aspect: [1, 1],
+        aspect: [3, 4],
         quality: 0.8,
       });
 
@@ -493,7 +493,7 @@ const styles = StyleSheet.create({
     color: '#71717A',
   },
   previewContainer: {
-    aspectRatio: 3/3,
+    aspectRatio: 3/4,
     marginHorizontal: 4,
     borderRadius: 12,
     overflow: 'hidden',
