@@ -20,6 +20,8 @@ import ProfileSetupScreen from '../screens/ProfileSetupScreen';
 import GroupDetailsScreen from '../screens/GroupDetailsScreen';
 import HallOfFlameScreen from '../screens/HallOfFlameScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import NotificationPreferences from '../components/NotificationPreferences';
+import DataManagementScreen from '../screens/DataManagementScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -34,6 +36,9 @@ function CustomTabBar({ state, descriptors, navigation, setShowPhotoPicker }) {
   useEffect(() => {
     if (user?.uid) {
       fetchUserProfile();
+    } else {
+      // Clear profile image when user logs out
+      setUserProfileImageURL(null);
     }
   }, [user]);
 
@@ -56,6 +61,11 @@ function CustomTabBar({ state, descriptors, navigation, setShowPhotoPicker }) {
 
   const fetchUserProfile = async () => {
     try {
+      // Check if user is still authenticated before making Firestore call
+      if (!user?.uid) {
+        return;
+      }
+      
       const userDoc = await getDoc(doc(db, 'users', user.uid));
       if (userDoc.exists()) {
         const userData = userDoc.data();
@@ -63,6 +73,13 @@ function CustomTabBar({ state, descriptors, navigation, setShowPhotoPicker }) {
       }
     } catch (error) {
       console.error('Error fetching user profile:', error);
+      // Clear profile image on Firestore permission errors (user signed out)
+      if (error.code === 'permission-denied' || error.message.includes('Missing or insufficient permissions')) {
+        setUserProfileImageURL(null);
+      } else {
+        // Clear profile image on other errors
+        setUserProfileImageURL(null);
+      }
     }
   };
 
@@ -386,6 +403,19 @@ function MainNavigator({ route }) {
       fetchUserData();
       fetchUserGroups();
     } else if (!user) {
+      // Clear data when user logs out
+      setUserGroups([]);
+      setUserData(null);
+      setLoading(false);
+    }
+  }, [user]);
+
+  // Additional cleanup effect to handle sign out more gracefully
+  useEffect(() => {
+    if (!user) {
+      // Ensure all data is cleared when user is null
+      setUserGroups([]);
+      setUserData(null);
       setLoading(false);
     }
   }, [user]);
@@ -423,8 +453,14 @@ function MainNavigator({ route }) {
       }
     } catch (error) {
       console.error('Error fetching user data:', error);
-      // Set empty object on error to prevent infinite loading
-      setUserData({});
+      // Clear data on Firestore permission errors (user signed out)
+      if (error.code === 'permission-denied' || error.message.includes('Missing or insufficient permissions')) {
+        setUserData(null);
+        setUserGroups([]);
+      } else {
+        // Set empty object on other errors to prevent infinite loading
+        setUserData({});
+      }
     }
   };
 
@@ -443,6 +479,14 @@ function MainNavigator({ route }) {
       setUserGroups(groups);
     } catch (error) {
       console.error('Error fetching groups:', error);
+      // Clear groups on Firestore permission errors (user signed out)
+      if (error.code === 'permission-denied' || error.message.includes('Missing or insufficient permissions')) {
+        setUserGroups([]);
+        setUserData(null);
+      } else {
+        // Clear groups on other errors
+        setUserGroups([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -501,6 +545,24 @@ function MainNavigator({ route }) {
             }}
           />
           <Stack.Screen 
+            name="NotificationPreferences" 
+            component={NotificationPreferences}
+            options={{
+              animation: 'slide_from_right',
+              gestureEnabled: true,
+              gestureDirection: 'horizontal',
+            }}
+          />
+          <Stack.Screen 
+            name="DataManagement" 
+            component={DataManagementScreen}
+            options={{
+              animation: 'slide_from_right',
+              gestureEnabled: true,
+              gestureDirection: 'horizontal',
+            }}
+          />
+          <Stack.Screen 
             name="FitDetails" 
             component={FitDetailsScreen}
             options={{
@@ -531,6 +593,26 @@ function MainNavigator({ route }) {
           <Stack.Screen 
             name="Settings" 
             component={SettingsScreen}
+            options={{
+              animation: 'slide_from_right',
+              gestureEnabled: true,
+              gestureDirection: 'horizontal',
+            }}
+          />
+
+          <Stack.Screen 
+            name="NotificationPreferences" 
+            component={NotificationPreferences}
+            options={{
+              animation: 'slide_from_right',
+              gestureEnabled: true,
+              gestureDirection: 'horizontal',
+            }}
+          />
+
+          <Stack.Screen 
+            name="DataManagement" 
+            component={DataManagementScreen}
             options={{
               animation: 'slide_from_right',
               gestureEnabled: true,

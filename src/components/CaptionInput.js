@@ -177,26 +177,29 @@ const CaptionInput = ({
     // Set focused state immediately for responsive UI
     setIsFocused(false);
     
+    // Hide suggestions immediately to prevent interference
+    hideSuggestionsList();
+    
     // Run animations in background without blocking UI
     Animated.parallel([
       Animated.timing(modalAnim, {
         toValue: 0,
-        duration: 200, // Faster animation
+        duration: 150, // Even faster for better responsiveness
         useNativeDriver: true,
       }),
       Animated.timing(scaleAnim, {
         toValue: 0.95,
-        duration: 200, // Faster animation
+        duration: 150, // Even faster for better responsiveness
         useNativeDriver: true,
       }),
       Animated.timing(opacityAnim, {
         toValue: 0,
-        duration: 150, // Faster animation
+        duration: 100, // Even faster for better responsiveness
         useNativeDriver: true,
       }),
       Animated.timing(translateYAnim, {
         toValue: 50,
-        duration: 200, // Faster animation
+        duration: 150, // Even faster for better responsiveness
         useNativeDriver: true,
       }),
     ]).start();
@@ -339,6 +342,8 @@ const CaptionInput = ({
         transparent={true}
         animationType="none"
         onRequestClose={handleBlur}
+        hardwareAccelerated={true}
+        statusBarTranslucent={true}
       >
         <Animated.View 
           style={[

@@ -8,6 +8,7 @@ import {
   Alert,
   SafeAreaView,
   StatusBar,
+  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../styles/theme';
@@ -45,6 +46,8 @@ const SettingsSection = ({ title, children }) => (
   </View>
 );
 
+
+
 export default function SettingsScreen({ navigation }) {
   const { signOutUser } = useAuth();
   
@@ -78,9 +81,9 @@ export default function SettingsScreen({ navigation }) {
         <SettingsSection title="Notifications">
           <SettingsItem
             icon="notifications-outline"
-            title="Notifications"
-            subtitle="Manage notification preferences"
-            onPress={() => handleComingSoon('Notifications')}
+            title="Notification Preferences"
+            subtitle="Manage all your notification settings"
+            onPress={() => navigation.navigate('NotificationPreferences')}
           />
         </SettingsSection>
 
@@ -90,43 +93,47 @@ export default function SettingsScreen({ navigation }) {
             icon="shield-outline"
             title="Privacy Policy"
             subtitle="Read our privacy policy"
-            onPress={() => {
-              Alert.alert(
-                'Privacy Policy',
-                'Our privacy policy is available at:\n\nhttps://fitcheck.app/privacy\n\nPlease review it to understand how we collect, use, and protect your data.',
-                [
-                  { text: 'OK', style: 'default' },
-                  { text: 'Copy Link', onPress: () => {
-                    // In a real app, you'd copy this to clipboard
-                    Alert.alert('Link Copied', 'Privacy policy link copied to clipboard');
-                  }}
-                ]
-              );
+            onPress={async () => {
+              try {
+                const url = 'https://fitcheck-landingpage.vercel.app/privacy';
+                const supported = await Linking.canOpenURL(url);
+                
+                if (supported) {
+                  await Linking.openURL(url);
+                } else {
+                  Alert.alert('Error', 'Cannot open this URL');
+                }
+              } catch (error) {
+                console.error('Error opening URL:', error);
+                Alert.alert('Error', 'Failed to open privacy policy');
+              }
             }}
           />
           <SettingsItem
             icon="document-text-outline"
             title="Terms of Service"
             subtitle="Read our terms of service"
-            onPress={() => {
-              Alert.alert(
-                'Terms of Service',
-                'Our terms of service are available at:\n\nhttps://fitcheck.app/terms\n\nPlease review them to understand your rights and responsibilities.',
-                [
-                  { text: 'OK', style: 'default' },
-                  { text: 'Copy Link', onPress: () => {
-                    // In a real app, you'd copy this to clipboard
-                    Alert.alert('Link Copied', 'Terms of service link copied to clipboard');
-                  }}
-                ]
-              );
+            onPress={async () => {
+              try {
+                const url = 'https://fitcheck-landingpage.vercel.app/terms';
+                const supported = await Linking.canOpenURL(url);
+                
+                if (supported) {
+                  await Linking.openURL(url);
+                } else {
+                  Alert.alert('Error', 'Cannot open this URL');
+                }
+              } catch (error) {
+                console.error('Error opening URL:', error);
+                Alert.alert('Error', 'Failed to open terms of service');
+              }
             }}
           />
           <SettingsItem
             icon="lock-closed-outline"
-            title="Data & Storage"
-            subtitle="Manage your data and storage settings"
-            onPress={() => handleComingSoon('Data & Storage Settings')}
+            title="Data & Privacy"
+            subtitle="Manage your data and privacy settings"
+            onPress={() => navigation.navigate('DataManagement')}
           />
         </SettingsSection>
 

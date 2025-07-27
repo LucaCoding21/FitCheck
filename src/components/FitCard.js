@@ -106,6 +106,11 @@ function FitCard({ fit, onCommentSectionOpen, onOpenCommentModal }) {
 
   // Memoize callback functions to prevent unnecessary re-renders
   const fetchUserData = useCallback(async () => {
+    // Check if user is authenticated before making Firestore calls
+    if (!user?.uid) {
+      return;
+    }
+
     try {
       if (fit.userId) {
         const userDoc = await getDoc(doc(db, "users", fit.userId));
@@ -116,11 +121,21 @@ function FitCard({ fit, onCommentSectionOpen, onOpenCommentModal }) {
       }
     } catch (error) {
       console.error("Error fetching user data:", error);
+      // Clear user data on permission errors (user signed out)
+      if (error.code === 'permission-denied' || error.message.includes('Missing or insufficient permissions')) {
+        setUserData(null);
+      }
     }
-  }, [fit.userId]);
+  }, [fit.userId, user?.uid]);
 
   // Fetch group names for the fit's groupIds
   const fetchGroupNames = useCallback(async () => {
+    // Check if user is authenticated before making Firestore calls
+    if (!user?.uid) {
+      setGroupNames("Group");
+      return;
+    }
+
     try {
       if (!fit.groupIds || fit.groupIds.length === 0) {
         setGroupNames("");
@@ -137,6 +152,10 @@ function FitCard({ fit, onCommentSectionOpen, onOpenCommentModal }) {
           return "Unknown Group";
         } catch (error) {
           console.error(`Error fetching group ${groupId}:`, error);
+          // Return fallback on permission errors (user signed out)
+          if (error.code === 'permission-denied' || error.message.includes('Missing or insufficient permissions')) {
+            return "Group";
+          }
           return "Unknown Group";
         }
       });
@@ -161,9 +180,14 @@ function FitCard({ fit, onCommentSectionOpen, onOpenCommentModal }) {
       }
     } catch (error) {
       console.error("Error fetching group names:", error);
-      setGroupNames("Group");
+      // Set fallback on permission errors (user signed out)
+      if (error.code === 'permission-denied' || error.message.includes('Missing or insufficient permissions')) {
+        setGroupNames("Group");
+      } else {
+        setGroupNames("Group");
+      }
     }
-  }, [fit.groupIds]);
+  }, [fit.groupIds, user?.uid]);
 
 
   const calculateFairRating = useCallback(() => {
@@ -255,12 +279,7 @@ function FitCard({ fit, onCommentSectionOpen, onOpenCommentModal }) {
         lastUpdated: new Date(),
       });
 
-      // Send notification to fit owner
-      try {
-        await notificationService.sendRatingNotification(fit.id, fit.userId, rating);
-      } catch (error) {
-        console.error('Error sending rating notification:', error);
-      }
+      // Notifications are now handled automatically by Firebase Cloud Functions
 
     } catch (error) {
       console.error("Error rating fit:", error);

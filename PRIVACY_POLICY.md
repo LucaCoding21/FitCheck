@@ -1,6 +1,6 @@
 # FitCheck Privacy Policy
 
-**Last Updated:** [Current Date]
+**Last Updated:** July 26, 2025
 
 ## Introduction
 
@@ -124,8 +124,8 @@ We may update this Privacy Policy from time to time. We will notify you of any m
 
 If you have questions about this Privacy Policy or our data practices, please contact us:
 
-**Email**: [Your Contact Email]
-**Address**: [Your Business Address]
+**Email**: fitcheck2101@gmail.com
+**Address**: 13318 104ave, Surrey BC, Canada
 
 ## California Privacy Rights (CCPA)
 

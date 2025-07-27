@@ -248,6 +248,12 @@ export default function ProfileScreen({ navigation }) {
         ...doc.data()
       }));
       
+      // Log any fits with missing or invalid imageURLs for debugging
+      const invalidFits = fits.filter(fit => !fit.imageURL || typeof fit.imageURL !== 'string' || fit.imageURL.trim() === '');
+      if (invalidFits.length > 0) {
+        console.warn('Found fits with invalid imageURLs:', invalidFits.map(fit => ({ id: fit.id, imageURL: fit.imageURL })));
+      }
+      
       setMyFits(fits);
       setLoading(false);
     } catch (error) {
@@ -395,6 +401,9 @@ export default function ProfileScreen({ navigation }) {
   const renderFitItem = React.useCallback(({ item, index }) => {
     const rating = calculateRating(item);
     
+    // Validate imageURL before rendering
+    const hasValidImage = item.imageURL && typeof item.imageURL === 'string' && item.imageURL.trim() !== '';
+    
     return (
       <TouchableOpacity
         onPress={() => navigation.navigate('FitDetails', { fitId: item.id })}
@@ -409,13 +418,18 @@ export default function ProfileScreen({ navigation }) {
             },
           ]}
         >
-          {item.imageURL ? (
+          {hasValidImage ? (
             <OptimizedImage
               source={{ uri: item.imageURL }}
               style={styles.fitImage}
               contentFit="cover"
               priority="normal"
               cachePolicy="memory-disk"
+              showLoadingIndicator={true}
+              showErrorState={true}
+              onError={() => {
+                console.warn(`Failed to load image for fit ${item.id}:`, item.imageURL);
+              }}
             />
           ) : (
             <View style={styles.placeholderImage}>
@@ -560,6 +574,15 @@ export default function ProfileScreen({ navigation }) {
             columnWrapperStyle={styles.fitGrid}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.fitList}
+            removeClippedSubviews={true}
+            maxToRenderPerBatch={9}
+            windowSize={10}
+            initialNumToRender={9}
+            getItemLayout={(data, index) => ({
+              length: GRID_ITEM_SIZE,
+              offset: GRID_ITEM_SIZE * Math.floor(index / 3),
+              index,
+            })}
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}

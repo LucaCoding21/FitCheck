@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,7 +17,10 @@ export default function OptimizedImage({
   showErrorState = true,
   ...props 
 }) {
-  // Safety check for source
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
+
+  // Safety check for source - handle both remote (with uri) and local assets
   if (!source) {
     return (
       <View style={[style, styles.errorContainer]}>
@@ -26,8 +29,27 @@ export default function OptimizedImage({
       </View>
     );
   }
-  const [isLoading, setIsLoading] = useState(true);
-  const [hasError, setHasError] = useState(false);
+
+  // For local assets (require()), source doesn't have uri
+  const isLocalAsset = !source.uri;
+
+  // Add timeout to prevent infinite loading (only for remote images)
+  useEffect(() => {
+    if (isLocalAsset) {
+      // Local assets don't need timeout
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      if (isLoading) {
+        console.warn('Image loading timeout:', source.uri);
+        setIsLoading(false);
+        setHasError(true);
+      }
+    }, 10000); // 10 second timeout
+
+    return () => clearTimeout(timeout);
+  }, [isLoading, source.uri, isLocalAsset]);
 
   const handleLoad = () => {
     setIsLoading(false);

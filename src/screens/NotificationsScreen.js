@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,9 +8,10 @@ import {
   Animated,
   Dimensions,
   StatusBar,
+  ActivityIndicator,
 } from 'react-native';
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
-import { collection, query, where, orderBy, onSnapshot, getDocs, doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { collection, query, where, orderBy, limit, getDocs, doc, updateDoc, arrayUnion, startAfter } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import OptimizedImage from '../components/OptimizedImage';
@@ -18,46 +19,66 @@ import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../styles/theme';
 
 const { width, height } = Dimensions.get('window');
+const NOTIFICATIONS_PER_PAGE = 5; // Reduced from 8 to 5 for faster initial load
 
 export default function NotificationsScreen({ isVisible, onClose, onNavigateToFit, onNotificationsOpened }) {
   const { user } = useAuth();
   const [notifications, setNotifications] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [lastDoc, setLastDoc] = useState(null);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   
   // Animation values
   const slideAnim = useRef(new Animated.Value(width)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const backdropFadeAnim = useRef(new Animated.Value(0)).current;
 
+  // Cache for notifications to avoid re-fetching
+  const notificationsCache = useRef(new Map()).current;
+
   useEffect(() => {
     if (isVisible) {
+      // Show animation immediately, load data in background
       showNotifications();
-      fetchNotifications();
+      // Small delay to let animation start first
+      setTimeout(() => {
+        if (isInitialLoad) {
+          fetchNotifications();
+        }
+      }, 50);
     } else {
       hideNotifications();
     }
   }, [isVisible]);
 
+  // Cache notifications between opens - store processed notifications directly
+  const cachedNotifications = useRef([]);
+  const cachedLastDoc = useRef(null);
+  const cachedHasMore = useRef(true);
+  const isUsingCache = useRef(false);
+
   const showNotifications = () => {
+    // Super fast animation - no heavy operations
     Animated.parallel([
       Animated.timing(slideAnim, {
         toValue: 0,
-        duration: 300,
+        duration: 100, // Super fast
         useNativeDriver: true,
       }),
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 300,
+        duration: 100, // Super fast
         useNativeDriver: true,
       }),
       Animated.timing(backdropFadeAnim, {
         toValue: 1,
-        duration: 300,
+        duration: 100, // Super fast
         useNativeDriver: true,
       }),
     ]).start(() => {
-      // Mark all notifications as read when opened
-      markNotificationsAsRead();
+      // Only call the callback, don't do heavy operations here
       if (onNotificationsOpened) {
         onNotificationsOpened();
       }
@@ -65,26 +86,48 @@ export default function NotificationsScreen({ isVisible, onClose, onNavigateToFi
   };
 
   const hideNotifications = () => {
+    // Cache current state before closing - only if we have notifications
+    if (notifications.length > 0) {
+      // Limit cache to prevent memory buildup - only keep last 20 notifications
+      const limitedNotifications = notifications.slice(0, 20);
+      cachedNotifications.current = [...limitedNotifications]; // Create a copy
+      cachedLastDoc.current = lastDoc;
+      cachedHasMore.current = hasMore;
+      isUsingCache.current = false; // Reset cache flag
+    }
+    
     Animated.parallel([
       Animated.timing(slideAnim, {
         toValue: width,
-        duration: 300,
+        duration: 150, // Even faster animation
         useNativeDriver: true,
       }),
       Animated.timing(fadeAnim, {
         toValue: 0,
-        duration: 300,
+        duration: 150, // Even faster animation
         useNativeDriver: true,
       }),
       Animated.timing(backdropFadeAnim, {
         toValue: 0,
-        duration: 300,
+        duration: 150, // Even faster animation
         useNativeDriver: true,
       }),
     ]).start(() => {
       onClose();
     });
   };
+
+  // Move markNotificationsAsRead to a separate effect that runs after data loads
+  useEffect(() => {
+    // Only mark as read if we're not using cached data and have notifications
+    if (notifications.length > 0 && !loading && isVisible && !isUsingCache.current) {
+      // Much longer delay to ensure UI is fully ready and not blocking
+      const timer = setTimeout(() => {
+        markNotificationsAsRead();
+      }, 1000); // Much longer delay to prevent blocking
+      return () => clearTimeout(timer);
+    }
+  }, [notifications.length, loading, isVisible]);
 
   const markNotificationsAsRead = async () => {
     if (!user || notifications.length === 0) return;
@@ -104,65 +147,144 @@ export default function NotificationsScreen({ isVisible, onClose, onNavigateToFi
     }
   };
 
-  const fetchNotifications = async () => {
+  const fetchNotifications = useCallback(async (loadMore = false) => {
     if (!user) return;
 
+    // If we have cached data and not loading more, use it immediately
+    if (!loadMore && cachedNotifications.current.length > 0 && cachedNotifications.current.length <= 30) {
+      setNotifications(cachedNotifications.current);
+      setLastDoc(cachedLastDoc.current);
+      setHasMore(cachedHasMore.current);
+      setIsInitialLoad(false);
+      isUsingCache.current = true; // Mark that we're using cache
+      return;
+    }
+
     try {
-      setLoading(true);
+      if (loadMore) {
+        setLoadingMore(true);
+      } else {
+        setLoading(true);
+      }
       
-      // Get all fits by the current user
-      const userFitsQuery = query(
+      // Calculate date 3 days ago for filtering
+      const threeDaysAgo = new Date();
+      threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+      threeDaysAgo.setHours(0, 0, 0, 0);
+
+      // Build query with pagination - only 5 items for faster loading
+      // Only get fits from last 3 days to reduce data load
+      let userFitsQuery = query(
         collection(db, 'fits'),
         where('userId', '==', user.uid),
-        orderBy('createdAt', 'desc')
+        where('createdAt', '>=', threeDaysAgo),
+        orderBy('createdAt', 'desc'),
+        limit(NOTIFICATIONS_PER_PAGE)
       );
 
-      const unsubscribe = onSnapshot(userFitsQuery, async (snapshot) => {
-        const userFits = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
+      // Add startAfter for pagination
+      if (loadMore && lastDoc) {
+        userFitsQuery = query(
+          collection(db, 'fits'),
+          where('userId', '==', user.uid),
+          where('createdAt', '>=', threeDaysAgo),
+          orderBy('createdAt', 'desc'),
+          startAfter(lastDoc),
+          limit(NOTIFICATIONS_PER_PAGE)
+        );
+      }
 
-        // Collect all comments from user's fits
-        const allNotifications = [];
-        
-        for (const fit of userFits) {
-          if (fit.comments && Array.isArray(fit.comments)) {
-            // Filter out comments by the user themselves
-            const otherComments = fit.comments.filter(comment => 
-              comment.userId !== user.uid
-            );
-            
-            // Add fit context to each comment
-            const notificationsWithContext = otherComments.map(comment => ({
-              ...comment,
-              fitId: fit.id,
-              fitImageUrl: fit.imageURL,
-              fitCaption: fit.caption,
-              fitCreatedAt: fit.createdAt,
-            }));
-            
-            allNotifications.push(...notificationsWithContext);
-          }
-        }
+      const snapshot = await getDocs(userFitsQuery);
+      
+      // Check if there are more documents
+      setHasMore(snapshot.docs.length === NOTIFICATIONS_PER_PAGE);
+      
+      if (snapshot.docs.length > 0) {
+        setLastDoc(snapshot.docs[snapshot.docs.length - 1]);
+      }
 
-        // Sort by timestamp (most recent first)
-        allNotifications.sort((a, b) => {
-          const dateA = a.timestamp?.toDate?.() || new Date(a.timestamp);
-          const dateB = b.timestamp?.toDate?.() || new Date(b.timestamp);
-          return dateB - dateA;
-        });
+      const userFits = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
 
-        setNotifications(allNotifications);
-        setLoading(false);
-      });
+      // Process notifications from fits - moved to separate function for better performance
+      const newNotifications = processFitsToNotifications(userFits, user.uid);
 
-      return unsubscribe;
+      // Update notifications state
+      if (loadMore) {
+        setNotifications(prev => [...prev, ...newNotifications]);
+      } else {
+        setNotifications(newNotifications);
+      }
+
+      setIsInitialLoad(false);
+      isUsingCache.current = false; // Mark that we're not using cache for fresh data
     } catch (error) {
       console.error('Error fetching notifications:', error);
+    } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
-  };
+  }, [user, lastDoc]);
+
+  // Simple function to process fits into notifications
+  const processFitsToNotifications = useCallback((userFits, userId) => {
+    const newNotifications = [];
+    
+    for (const fit of userFits) {
+      if (fit.comments && Array.isArray(fit.comments)) {
+        // Filter out comments by the user themselves
+        const otherComments = fit.comments.filter(comment => 
+          comment.userId !== userId
+        );
+        
+        // Add fit context to each comment
+        const notificationsWithContext = otherComments.map(comment => ({
+          ...comment,
+          fitId: fit.id,
+          fitImageUrl: fit.imageURL,
+          fitCaption: fit.caption,
+          fitCreatedAt: fit.createdAt,
+        }));
+        
+        newNotifications.push(...notificationsWithContext);
+      }
+    }
+
+    return newNotifications;
+  }, []);
+
+  const loadMoreNotifications = useCallback(() => {
+    if (hasMore && !loadingMore) {
+      fetchNotifications(true);
+    }
+  }, [hasMore, loadingMore, fetchNotifications]);
+
+  // Clear cache when needed (e.g., when new notifications might have been added)
+  const clearCache = useCallback(() => {
+    cachedNotifications.current = [];
+    cachedLastDoc.current = null;
+    cachedHasMore.current = true;
+    isUsingCache.current = false;
+    setIsInitialLoad(true);
+  }, []);
+
+  // Clear cache periodically to prevent memory buildup
+  useEffect(() => {
+    const cacheCleanupInterval = setInterval(() => {
+      if (cachedNotifications.current.length > 50) {
+        console.log('🧹 Clearing notification cache to prevent memory buildup');
+        clearCache();
+      }
+    }, 30000); // Check every 30 seconds
+
+    return () => {
+      clearInterval(cacheCleanupInterval);
+      // Clear cache on unmount to prevent memory leaks
+      clearCache();
+    };
+  }, [clearCache]);
 
   const handleNotificationPress = (notification) => {
     hideNotifications();
@@ -213,7 +335,7 @@ export default function NotificationsScreen({ isVisible, onClose, onNavigateToFi
     hideNotifications();
   };
 
-  const formatTimeAgo = (date) => {
+  const formatTimeAgo = useCallback((date) => {
     if (!date) return "Just now";
     
     const now = new Date();
@@ -236,9 +358,9 @@ export default function NotificationsScreen({ isVisible, onClose, onNavigateToFi
     if (diffInHours < 24) return `${diffInHours}h ago`;
     if (diffInDays < 7) return `${diffInDays}d ago`;
     return commentDate.toLocaleDateString();
-  };
+  }, []);
 
-  const renderNotification = ({ item }) => (
+  const renderNotification = useCallback(({ item }) => (
     <TouchableOpacity
       style={styles.notificationItem}
       onPress={() => handleNotificationPress(item)}
@@ -252,6 +374,7 @@ export default function NotificationsScreen({ isVisible, onClose, onNavigateToFi
                 source={{ uri: item.userProfileImageURL }} 
                 style={styles.avatarImage}
                 showLoadingIndicator={false}
+                priority="low"
               />
             ) : (
               <Text style={styles.avatarText}>
@@ -273,13 +396,14 @@ export default function NotificationsScreen({ isVisible, onClose, onNavigateToFi
             style={styles.fitImage}
             contentFit="cover"
             showLoadingIndicator={false}
+            priority="low"
           />
         </View>
       </View>
     </TouchableOpacity>
-  );
+  ), [handleNotificationPress, formatTimeAgo]);
 
-  const renderEmptyState = () => (
+  const renderEmptyState = useCallback(() => (
     <View style={styles.emptyState}>
       <View style={styles.emptyIcon}>
         <Ionicons name="notifications-outline" size={32} color={theme.colors.textSecondary} />
@@ -289,7 +413,20 @@ export default function NotificationsScreen({ isVisible, onClose, onNavigateToFi
         When someone comments on your fits, you'll see them here
       </Text>
     </View>
-  );
+  ), []);
+
+  const renderFooter = useCallback(() => {
+    if (!loadingMore) return null;
+    return (
+      <View style={styles.loadingMoreContainer}>
+        <ActivityIndicator size="small" color={theme.colors.primary} />
+        <Text style={styles.loadingMoreText}>Loading more...</Text>
+      </View>
+    );
+  }, [loadingMore]);
+
+  const keyExtractor = useCallback((item, index) => 
+    `${item.fitId}_${item.id || index}`, []);
 
   if (!isVisible) return null;
 
@@ -340,8 +477,9 @@ export default function NotificationsScreen({ isVisible, onClose, onNavigateToFi
 
         {/* Content */}
         <View style={styles.content}>
-          {loading ? (
+          {loading && notifications.length === 0 ? (
             <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={theme.colors.primary} />
               <Text style={styles.loadingText}>Loading notifications...</Text>
             </View>
           ) : notifications.length === 0 ? (
@@ -349,10 +487,27 @@ export default function NotificationsScreen({ isVisible, onClose, onNavigateToFi
           ) : (
             <FlatList
               data={notifications}
-              keyExtractor={(item, index) => `${item.fitId}_${item.id || index}`}
+              keyExtractor={keyExtractor}
               renderItem={renderNotification}
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.listContainer}
+              onEndReached={loadMoreNotifications}
+              onEndReachedThreshold={0.3}
+              ListFooterComponent={renderFooter}
+              removeClippedSubviews={true}
+              maxToRenderPerBatch={2}
+              windowSize={3}
+              initialNumToRender={3}
+              getItemLayout={(data, index) => ({
+                length: 82, // Height of notification item
+                offset: 82 * index,
+                index,
+              })}
+              scrollEventThrottle={16}
+              decelerationRate="fast"
+              bounces={false}
+              updateCellsBatchingPeriod={50}
+              disableVirtualization={false}
             />
           )}
         </View>
@@ -432,6 +587,16 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 16,
     color: theme.colors.textSecondary,
+    marginTop: 12,
+  },
+  loadingMoreContainer: {
+    paddingVertical: 20,
+    alignItems: 'center',
+  },
+  loadingMoreText: {
+    fontSize: 14,
+    color: theme.colors.textSecondary,
+    marginTop: 8,
   },
   listContainer: {
     paddingVertical: 10,
@@ -490,6 +655,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: theme.colors.textSecondary,
   },
+
   fitPreview: {
     width: 50,
     height: 50,

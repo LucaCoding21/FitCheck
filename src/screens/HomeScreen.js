@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, Alert, StatusBar, Modal, Animated, Dimensions, Animated as RNAnimated, PanGestureHandler, State, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, Alert, StatusBar, Modal, Animated, Dimensions, Animated as RNAnimated, PanGestureHandler, State, ScrollView, ActivityIndicator, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, query, where, orderBy, onSnapshot, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, getDocs, doc, getDoc, limit } from 'firebase/firestore';
 
 const AnimatedFlatList = RNAnimated.createAnimatedComponent(FlatList);
 import { db } from '../config/firebase';
@@ -136,10 +136,8 @@ export default function HomeScreen({ navigation, route }) {
       fetchUserProfile();
     }, 200); // Reduced delay
     
-    // Defer notification count - much longer delay to prevent blocking
-    const notificationTimer = setTimeout(() => {
-      fetchUnreadNotificationsCount();
-    }, 3000); // Much longer delay to prevent blocking transitions
+    // Fetch notification count immediately but with limit for performance
+    fetchUnreadNotificationsCount();
     
     // Daily winner calculation now handled automatically by Cloud Functions
     // No manual calculation needed
@@ -155,7 +153,7 @@ export default function HomeScreen({ navigation, route }) {
     return () => {
       clearInterval(countdownInterval);
       clearTimeout(profileTimer);
-      clearTimeout(notificationTimer);
+      // No notification timer to clear - now immediate
       // No winner timer to clear - handled by Cloud Functions
     };
   }, []);
@@ -303,6 +301,10 @@ export default function HomeScreen({ navigation, route }) {
 
 
   const fetchUserProfile = async () => {
+    if (!user?.uid) {
+      return;
+    }
+
     try {
       const userDoc = await getDoc(doc(db, 'users', user.uid));
       if (userDoc.exists()) {
@@ -311,11 +313,15 @@ export default function HomeScreen({ navigation, route }) {
       }
     } catch (error) {
       console.error('Error fetching user profile:', error);
+      // Clear profile image on Firestore permission errors (user signed out)
+      if (error.code === 'permission-denied' || error.message.includes('Missing or insufficient permissions')) {
+        setUserProfileImageURL(null);
+      }
     }
   };
 
   const fetchUnreadNotificationsCount = async () => {
-    if (!user) return;
+    if (!user?.uid) return;
 
     try {
       // Get user's read notifications from their profile first
@@ -323,10 +329,16 @@ export default function HomeScreen({ navigation, route }) {
       const userData = userDoc.data();
       const readNotificationIds = userData?.readNotificationIds || [];
 
-      // Get all fits by the current user with one-time query
+      // Calculate date 3 days ago for filtering
+      const threeDaysAgo = new Date();
+      threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+      threeDaysAgo.setHours(0, 0, 0, 0);
+
+      // Get fits by the current user from last 3 days only - much faster
       const userFitsQuery = query(
         collection(db, 'fits'),
         where('userId', '==', user.uid),
+        where('createdAt', '>=', threeDaysAgo),
         orderBy('createdAt', 'desc')
       );
 
@@ -336,7 +348,7 @@ export default function HomeScreen({ navigation, route }) {
         ...doc.data()
       }));
 
-      // Count unread notifications more efficiently
+      // Count unread notifications more efficiently - limit to 5 per fit
       let unreadCount = 0;
       
       for (const fit of userFits) {
@@ -349,7 +361,16 @@ export default function HomeScreen({ navigation, route }) {
             return !readNotificationIds.includes(notificationId);
           });
           
-          unreadCount += unreadComments.length;
+          // Limit to 5 most recent unread comments per fit to prevent spam
+          const recentUnreadComments = unreadComments
+            .sort((a, b) => {
+              const dateA = a.timestamp?.toDate?.() || new Date(a.timestamp);
+              const dateB = b.timestamp?.toDate?.() || new Date(b.timestamp);
+              return dateB - dateA;
+            })
+            .slice(0, 5);
+          
+          unreadCount += recentUnreadComments.length;
         }
       }
 
@@ -357,10 +378,18 @@ export default function HomeScreen({ navigation, route }) {
 
     } catch (error) {
       console.error('Error fetching unread notifications count:', error);
+      // Clear count on Firestore permission errors (user signed out)
+      if (error.code === 'permission-denied' || error.message.includes('Missing or insufficient permissions')) {
+        setUnreadNotificationsCount(0);
+      }
     }
   };
 
   const fetchUserGroups = async () => {
+    if (!user?.uid) {
+      return;
+    }
+
     try {
       const groupsQuery = query(
         collection(db, 'groups'),
@@ -371,6 +400,10 @@ export default function HomeScreen({ navigation, route }) {
       setUserGroups(groups);
     } catch (error) {
       console.error('Error fetching groups:', error);
+      // Clear groups on Firestore permission errors (user signed out)
+      if (error.code === 'permission-denied' || error.message.includes('Missing or insufficient permissions')) {
+        setUserGroups([]);
+      }
     }
   };
 
@@ -602,12 +635,14 @@ export default function HomeScreen({ navigation, route }) {
   };
 
   const handleNotificationPress = () => {
+    // Clear unread count immediately when opening notifications
+    setUnreadNotificationsCount(0);
     setShowNotifications(true);
   };
 
   const handleNotificationsOpened = () => {
-    // Clear unread count when notifications are opened
-    setUnreadNotificationsCount(0);
+    // Unread count already cleared in handleNotificationPress
+    // This is just a callback for any additional logic
   };
 
   const handleCloseNotifications = () => {
@@ -752,10 +787,9 @@ export default function HomeScreen({ navigation, route }) {
               onPress={handleNotificationPress}
               activeOpacity={0.8}
             >
-              <OptimizedImage 
+              <Image 
                 source={require('../../assets/noti.png')} 
                 style={styles.notificationIcon}
-                showLoadingIndicator={false}
               />
               {unreadNotificationsCount > 0 && (
                 <View style={styles.notificationDot} />

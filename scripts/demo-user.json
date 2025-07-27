@@ -1,0 +1,16 @@
+{
+  "users": [
+    {
+      "localId": "demo-reviewer-account",
+      "email": "reviewer@fitcheck.app",
+      "emailVerified": true,
+      "passwordHash": "UkV2aWV3VGVzdDEyMyE=",
+      "salt": "salt",
+      "displayName": "DemoReviewer",
+      "photoUrl": "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&h=200&fit=crop&crop=face",
+      "createdAt": "1732665600000",
+      "lastSignedInAt": "1732665600000",
+      "providerUserInfo": []
+    }
+  ]
+} 

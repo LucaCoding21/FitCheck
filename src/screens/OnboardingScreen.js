@@ -6,10 +6,10 @@ import {
   StyleSheet,
   Dimensions,
   Animated,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { theme } from '../styles/theme';
-import OptimizedImage from '../components/OptimizedImage';
 
 const { width, height } = Dimensions.get('window');
 
@@ -176,11 +176,10 @@ const OnboardingScreen = ({ navigation }) => {
                   },
                 ]}
               >
-                <OptimizedImage
+                <Image
                   source={fitImages[index]}
                   style={styles.fitImage}
-                  contentFit="cover"
-                  showLoadingIndicator={false}
+                  resizeMode="cover"
                 />
               </Animated.View>
             );

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -6,137 +6,170 @@ import {
   StyleSheet,
   Switch,
   Alert,
+  SafeAreaView,
+  StatusBar,
+  ScrollView,
 } from 'react-native';
-import { doc, updateDoc, getDoc } from 'firebase/firestore';
-import { db } from '../config/firebase';
-import { useAuth } from '../contexts/AuthContext';
+import { Ionicons } from '@expo/vector-icons';
+import { useNotificationSettings } from '../hooks/useNotificationSettings';
 import { theme } from '../styles/theme';
 
-export default function NotificationPreferences() {
-  const { user } = useAuth();
-  const [preferences, setPreferences] = useState({
-    commentNotifications: true,
-    ratingNotifications: true,
-    newFitNotifications: true,
-  });
-  const [loading, setLoading] = useState(true);
+export default function NotificationPreferences({ navigation }) {
+  const {
+    preferences,
+    loading,
+    error,
+    updatePreference,
+  } = useNotificationSettings();
 
-  useEffect(() => {
-    if (user) {
-      loadPreferences();
-    }
-  }, [user]);
-
-  const loadPreferences = async () => {
+  const handlePreferenceChange = async (key, value) => {
     try {
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-        const savedPreferences = userData.notificationPreferences || {};
-        
-        setPreferences({
-          commentNotifications: savedPreferences.commentNotifications !== false,
-          ratingNotifications: savedPreferences.ratingNotifications !== false,
-          newFitNotifications: savedPreferences.newFitNotifications !== false,
-        });
-      }
+      await updatePreference(key, value);
     } catch (error) {
-      console.error('Error loading notification preferences:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const updatePreference = async (key, value) => {
-    if (!user) return;
-
-    try {
-      const newPreferences = { ...preferences, [key]: value };
-      setPreferences(newPreferences);
-
-      await updateDoc(doc(db, 'users', user.uid), {
-        notificationPreferences: newPreferences,
-        updatedAt: new Date(),
-      });
-
-      console.log(`Notification preference updated: ${key} = ${value}`);
-    } catch (error) {
-      console.error('Error updating notification preference:', error);
       Alert.alert('Error', 'Failed to update notification preference. Please try again.');
-      // Revert the change on error
-      setPreferences(prev => ({ ...prev, [key]: !value }));
     }
   };
 
   if (loading) {
     return (
-      <View style={styles.container}>
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
         <Text style={styles.loadingText}>Loading preferences...</Text>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Notification Settings</Text>
-      <Text style={styles.subtitle}>Choose which notifications you want to receive</Text>
-
-      <View style={styles.preferencesContainer}>
-        {/* Comment Notifications */}
-        <View style={styles.preferenceItem}>
-          <View style={styles.preferenceInfo}>
-            <Text style={styles.preferenceTitle}>Comments</Text>
-            <Text style={styles.preferenceDescription}>
-              When someone comments on your fits
-            </Text>
-          </View>
-          <Switch
-            value={preferences.commentNotifications}
-            onValueChange={(value) => updatePreference('commentNotifications', value)}
-            trackColor={{ false: '#3a3a3a', true: theme.colors.primary }}
-            thumbColor={preferences.commentNotifications ? '#ffffff' : '#f4f3f4'}
-          />
-        </View>
-
-        {/* Rating Notifications */}
-        <View style={styles.preferenceItem}>
-          <View style={styles.preferenceInfo}>
-            <Text style={styles.preferenceTitle}>Ratings</Text>
-            <Text style={styles.preferenceDescription}>
-              When someone rates your fit (anonymous)
-            </Text>
-          </View>
-          <Switch
-            value={preferences.ratingNotifications}
-            onValueChange={(value) => updatePreference('ratingNotifications', value)}
-            trackColor={{ false: '#3a3a3a', true: theme.colors.primary }}
-            thumbColor={preferences.ratingNotifications ? '#ffffff' : '#f4f3f4'}
-          />
-        </View>
-
-        {/* New Fit Notifications */}
-        <View style={styles.preferenceItem}>
-          <View style={styles.preferenceInfo}>
-            <Text style={styles.preferenceTitle}>New Fits</Text>
-            <Text style={styles.preferenceDescription}>
-              When someone in your group posts a fit
-            </Text>
-          </View>
-          <Switch
-            value={preferences.newFitNotifications}
-            onValueChange={(value) => updatePreference('newFitNotifications', value)}
-            trackColor={{ false: '#3a3a3a', true: theme.colors.primary }}
-            thumbColor={preferences.newFitNotifications ? '#ffffff' : '#f4f3f4'}
-          />
-        </View>
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor={theme.colors.background} />
+      
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Notifications</Text>
+        <View style={styles.headerSpacer} />
       </View>
 
-      <View style={styles.infoContainer}>
-        <Text style={styles.infoText}>
-          💡 You can change these settings anytime. Changes take effect immediately.
-        </Text>
-      </View>
-    </View>
+      <ScrollView 
+        style={styles.content} 
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
+        <Text style={styles.subtitle}>Choose which notifications you want to receive</Text>
+
+        <View style={styles.preferencesContainer}>
+          {/* Comment Notifications */}
+          <View style={styles.preferenceItem}>
+            <View style={styles.preferenceInfo}>
+              <Text style={styles.preferenceTitle}>Comments</Text>
+              <Text style={styles.preferenceDescription}>
+                When someone comments on your fits
+              </Text>
+            </View>
+            <Switch
+              value={preferences.commentNotifications}
+              onValueChange={(value) => handlePreferenceChange('commentNotifications', value)}
+              trackColor={{ false: '#3a3a3a', true: theme.colors.primary }}
+              thumbColor={preferences.commentNotifications ? '#ffffff' : '#f4f3f4'}
+            />
+          </View>
+
+          {/* Rating Notifications */}
+          <View style={styles.preferenceItem}>
+            <View style={styles.preferenceInfo}>
+              <Text style={styles.preferenceTitle}>Ratings</Text>
+              <Text style={styles.preferenceDescription}>
+                When someone rates your fit (anonymous)
+              </Text>
+            </View>
+            <Switch
+              value={preferences.ratingNotifications}
+              onValueChange={(value) => handlePreferenceChange('ratingNotifications', value)}
+              trackColor={{ false: '#3a3a3a', true: theme.colors.primary }}
+              thumbColor={preferences.ratingNotifications ? '#ffffff' : '#f4f3f4'}
+            />
+          </View>
+
+          {/* New Fit Notifications */}
+          <View style={styles.preferenceItem}>
+            <View style={styles.preferenceInfo}>
+              <Text style={styles.preferenceTitle}>New Fits</Text>
+              <Text style={styles.preferenceDescription}>
+                When someone in your group posts a fit
+              </Text>
+            </View>
+            <Switch
+              value={preferences.newFitNotifications}
+              onValueChange={(value) => handlePreferenceChange('newFitNotifications', value)}
+              trackColor={{ false: '#3a3a3a', true: theme.colors.primary }}
+              thumbColor={preferences.newFitNotifications ? '#ffffff' : '#f4f3f4'}
+            />
+          </View>
+
+          {/* Post Reminder Notifications */}
+          <View style={styles.preferenceItem}>
+            <View style={styles.preferenceInfo}>
+              <Text style={styles.preferenceTitle}>Daily Reminders</Text>
+              <Text style={styles.preferenceDescription}>
+                Reminders to post your daily fit
+              </Text>
+            </View>
+            <Switch
+              value={preferences.postReminderNotifications}
+              onValueChange={(value) => handlePreferenceChange('postReminderNotifications', value)}
+              trackColor={{ false: '#3a3a3a', true: theme.colors.primary }}
+              thumbColor={preferences.postReminderNotifications ? '#ffffff' : '#f4f3f4'}
+            />
+          </View>
+
+          {/* Leaderboard Notifications */}
+          <View style={styles.preferenceItem}>
+            <View style={styles.preferenceInfo}>
+              <Text style={styles.preferenceTitle}>Leaderboard Results</Text>
+              <Text style={styles.preferenceDescription}>
+                Daily winner announcements and resets
+              </Text>
+            </View>
+            <Switch
+              value={preferences.leaderboardNotifications}
+              onValueChange={(value) => handlePreferenceChange('leaderboardNotifications', value)}
+              trackColor={{ false: '#3a3a3a', true: theme.colors.primary }}
+              thumbColor={preferences.leaderboardNotifications ? '#ffffff' : '#f4f3f4'}
+            />
+          </View>
+
+          {/* New Member Notifications */}
+          <View style={styles.preferenceItem}>
+            <View style={styles.preferenceInfo}>
+              <Text style={styles.preferenceTitle}>New Members</Text>
+              <Text style={styles.preferenceDescription}>
+                When someone joins your group
+              </Text>
+            </View>
+            <Switch
+              value={preferences.newMemberNotifications}
+              onValueChange={(value) => handlePreferenceChange('newMemberNotifications', value)}
+              trackColor={{ false: '#3a3a3a', true: theme.colors.primary }}
+              thumbColor={preferences.newMemberNotifications ? '#ffffff' : '#f4f3f4'}
+            />
+          </View>
+        </View>
+
+
+
+        <View style={styles.infoContainer}>
+          <Text style={styles.infoText}>
+            💡 You can change these settings anytime. Changes take effect immediately.
+          </Text>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -144,13 +177,39 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#1a1a1a',
-    padding: 20,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333333',
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: '700',
     color: '#FFFFFF',
-    marginBottom: 8,
+  },
+  headerSpacer: {
+    width: 44,
+  },
+  content: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: 20,
+    paddingBottom: 40,
   },
   subtitle: {
     fontSize: 16,

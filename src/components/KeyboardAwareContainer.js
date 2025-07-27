@@ -1,5 +1,5 @@
 import React, { useCallback } from "react";
-import { View, Keyboard, SafeAreaView, TouchableWithoutFeedback } from "react-native";
+import { View, Keyboard, SafeAreaView } from "react-native";
 import { theme } from "../styles/theme";
 
 const KeyboardAwareContainer = ({
@@ -8,25 +8,14 @@ const KeyboardAwareContainer = ({
   dismissKeyboardOnTap = true,
   ...props
 }) => {
-  const handleScreenTap = useCallback(() => {
-    if (dismissKeyboardOnTap) {
-      Keyboard.dismiss();
-    }
-  }, [dismissKeyboardOnTap]);
-
+  // Remove TouchableWithoutFeedback wrapper that was blocking scroll events
+  // The CaptionInput modal already handles its own keyboard dismissal properly
+  
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      {dismissKeyboardOnTap ? (
-        <TouchableWithoutFeedback onPress={handleScreenTap}>
-          <View style={[{ flex: 1 }, style]} {...props}>
-            {children}
-          </View>
-        </TouchableWithoutFeedback>
-      ) : (
-        <View style={[{ flex: 1 }, style]} {...props}>
-          {children}
-        </View>
-      )}
+      <View style={[{ flex: 1 }, style]} {...props}>
+        {children}
+      </View>
     </SafeAreaView>
   );
 };

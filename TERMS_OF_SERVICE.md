@@ -1,6 +1,6 @@
 # FitCheck Terms of Service
 
-**Last Updated:** [Current Date]
+**Last Updated:** July 26, 2025
 
 ## Agreement to Terms
 
@@ -148,7 +148,7 @@ You agree to indemnify and hold us harmless from:
 
 ### Governing Law
 
-These Terms are governed by the laws of [Your Jurisdiction].
+These Terms are governed by the laws of Vancouver, Canada.
 
 ### Dispute Resolution
 
@@ -207,8 +207,8 @@ You may not assign your rights under these Terms. We may assign our rights to an
 
 For questions about these Terms, please contact us:
 
-**Email**: [Your Contact Email]
-**Address**: [Your Business Address]
+**Email**: fitcheck2101@gmail.com
+**Address**: 13318 104ave, Surrey BC, Canada
 
 ## Age Requirements
 

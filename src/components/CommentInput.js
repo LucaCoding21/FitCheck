@@ -81,7 +81,7 @@ export default function CommentInput({ fitId, onCommentAdded, placeholder = "Add
           const fitOwnerId = fitData.userId;
           const commenterName = userData.username || userData.displayName || userData.name || "User";
           
-          await notificationService.sendCommentNotification(fitId, commenterName, fitOwnerId);
+          // Notifications are now handled automatically by Firebase Cloud Functions
         }
       } catch (error) {
         console.error('Error sending comment notification:', error);

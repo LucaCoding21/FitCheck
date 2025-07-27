@@ -192,25 +192,24 @@ export default function PostFitScreen({ navigation, route }) {
         return;
       }
       
-      // Batch query all members in one call (Firestore supports up to 10 items in 'in' clause)
-      const batchSize = 10;
+      // Use individual getDoc calls instead of query to work with security rules
       const members = [];
       
-      for (let i = 0; i < uniqueMemberUids.length; i += batchSize) {
-        const batch = uniqueMemberUids.slice(i, i + batchSize);
-        const usersQuery = query(
-          collection(db, "users"),
-          where("uid", "in", batch)
-        );
-        const snapshot = await getDocs(usersQuery);
-        snapshot.docs.forEach((doc) => {
-          const userData = doc.data();
-          members.push({
-            id: doc.id,
-            name: userData.displayName || userData.email,
-            username: userData.username,
-          });
-        });
+      for (const uid of uniqueMemberUids) {
+        try {
+          const userDoc = await getDoc(doc(db, "users", uid));
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            members.push({
+              id: userDoc.id,
+              name: userData.displayName || userData.email,
+              username: userData.username,
+            });
+          }
+        } catch (error) {
+          console.error(`Error fetching user ${uid}:`, error);
+          // Continue with other users even if one fails
+        }
       }
       
       setGroupMembers(members);
@@ -421,16 +420,8 @@ export default function PostFitScreen({ navigation, route }) {
         });
       }, 25); // Minimal delay
 
-      // Send notifications in background with minimal impact
-      setTimeout(() => {
-        notificationService.sendNewFitNotificationToAllGroups(
-          fitDocRef.id,
-          userName,
-          userGroups
-        ).catch(error => {
-          console.error('Error sending new fit notifications:', error);
-        });
-      }, 1000);
+      // Notifications are now handled automatically by Firebase Cloud Functions
+      // No need to send client-side notifications
 
     } catch (error) {
       console.error("Error posting fit:", error);
@@ -520,6 +511,7 @@ export default function PostFitScreen({ navigation, route }) {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={true}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
           bounces={true}
           nestedScrollEnabled={true}
         >

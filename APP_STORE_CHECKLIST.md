@@ -4,8 +4,8 @@
 
 ### ✅ Legal Documents (REQUIRED)
 
-- [ ] **Privacy Policy** - Created and hosted at https://fitcheck.app/privacy
-- [ ] **Terms of Service** - Created and hosted at https://fitcheck.app/terms
+- [x] **Privacy Policy** - Created and hosted at https://fitcheck.app/privacy
+- [x] **Terms of Service** - Created and hosted at https://fitcheck.app/terms
 - [ ] **Contact Information** - Valid email and business address
 - [ ] **Age Rating** - Set to 12+ or 17+ (recommended: 12+)
 
@@ -71,10 +71,10 @@
 
 - [ ] **Privacy Requirements**
 
-  - [ ] Privacy policy accessible in app
-  - [ ] Data collection disclosure
-  - [ ] User consent for data usage
-  - [ ] Data deletion options
+  - [x] Privacy policy accessible in app
+  - [x] Data collection disclosure
+  - [x] User consent for data usage
+  - [x] Data deletion options
 
 - [ ] **Functionality**
   - [ ] All features work as described
@@ -84,10 +84,11 @@
 
 ### ✅ App Review Information
 
-- [ ] **Demo Account** - Create test account for reviewers
-  - [ ] Username: `reviewer@fitcheck.app`
-  - [ ] Password: `ReviewTest123!`
-  - [ ] Sample data: Test groups, fits, ratings
+- [x] **Demo Account** - Create test account for reviewers
+  - [x] Username: `reviewer@example.com`
+  - [x] Password: `ReviewTest123!`
+  - [x] Sample data: Test groups, fits, ratings
+  - [x] Demo data persists through daily resets
 - [ ] **Review Notes** - Clear instructions for testing
 - [ ] **Contact Information** - Valid support email
 
@@ -113,13 +114,21 @@ Secondary Category: Lifestyle
 ### ✅ App Review Information
 
 ```
-Demo Account: reviewer@fitcheck.app
+Demo Account: reviewer@example.com
 Password: ReviewTest123!
-Notes:
-- Create a group to test social features
-- Post a fit to test photo upload
-- Rate other fits to test competition system
-- Check leaderboard and Hall of Flame features
+
+IMPORTANT NOTES FOR REVIEWERS:
+- This is a daily fashion competition app that resets at midnight
+- Demo data is preserved and won't be affected by daily resets
+- To test the full experience:
+  1. Create a new group or join existing demo group
+  2. Post a fit using the camera or photo library
+  3. Rate other fits using the 5-star system
+  4. Check the leaderboard to see daily rankings
+  5. View Hall of Flame for past winners
+  6. Test notifications and social features
+
+If demo data appears empty, contact us for a manual reset.
 ```
 
 ## 🚀 Submission Process

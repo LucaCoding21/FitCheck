@@ -21,58 +21,73 @@ class NotificationService {
     // Track recent rating notifications to prevent spam
     this.recentRatingNotifications = new Map(); // userId_fitId -> timestamp
     this.RATING_COOLDOWN_MS = 30000; // 30 seconds cooldown between rating notifications
+    this.initialized = false;
   }
 
   // Initialize notification service
   async initialize() {
     try {
+      console.log('🔔 NotificationService: Starting initialization...');
+      
       // Request permissions
       const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      console.log('🔔 NotificationService: Existing permission status:', existingStatus);
+      
       let finalStatus = existingStatus;
       
       if (existingStatus !== 'granted') {
+        console.log('🔔 NotificationService: Requesting permissions...');
         const { status } = await Notifications.requestPermissionsAsync();
         finalStatus = status;
+        console.log('🔔 NotificationService: New permission status:', finalStatus);
       }
       
       if (finalStatus !== 'granted') {
-        console.log('Failed to get push token for push notification!');
+        console.log('❌ NotificationService: Failed to get push notification permissions!');
         return false;
       }
 
       // Get push token
       if (Device.isDevice) {
+        console.log('🔔 NotificationService: Getting Expo push token...');
         this.expoPushToken = (await Notifications.getExpoPushTokenAsync({
           projectId: 'f2827a96-31a7-42b8-978a-3f54697a207d',
         })).data;
-        console.log('Expo push token:', this.expoPushToken);
+        console.log('✅ NotificationService: Expo push token obtained:', this.expoPushToken);
       } else {
-        console.log('Must use physical device for Push Notifications');
+        console.log('⚠️ NotificationService: Must use physical device for Push Notifications');
+        return false;
       }
 
       // Set up notification listeners
       this.setupNotificationListeners();
-
+      
+      this.initialized = true;
+      console.log('✅ NotificationService: Initialization complete');
       return true;
     } catch (error) {
-      console.error('Error initializing notifications:', error);
+      console.error('❌ NotificationService: Error initializing notifications:', error);
       return false;
     }
   }
 
   // Set up notification listeners
   setupNotificationListeners() {
+    console.log('🔔 NotificationService: Setting up notification listeners...');
+    
     // Listen for incoming notifications
     this.notificationListener = Notifications.addNotificationReceivedListener(notification => {
-      console.log('Notification received:', notification);
+      console.log('🔔 NotificationService: Notification received:', notification);
     });
 
     // Listen for notification responses (when user taps notification)
     this.responseListener = Notifications.addNotificationResponseReceivedListener(response => {
-      console.log('Notification response:', response);
+      console.log('🔔 NotificationService: Notification response:', response);
       // Handle notification tap - navigate to appropriate screen
       this.handleNotificationTap(response);
     });
+    
+    console.log('✅ NotificationService: Notification listeners set up');
   }
 
   // Handle notification tap
@@ -98,57 +113,119 @@ class NotificationService {
 
   // Save push token to user's Firestore document
   async savePushToken() {
-    if (!this.expoPushToken || !auth.currentUser) return;
+    if (!this.expoPushToken || !auth.currentUser) {
+      console.log('⚠️ NotificationService: Cannot save push token - missing token or user');
+      console.log('Token:', this.expoPushToken ? 'Present' : 'Missing');
+      console.log('User:', auth.currentUser ? 'Present' : 'Missing');
+      return;
+    }
 
     try {
+      console.log('🔔 NotificationService: Saving push token to Firestore...');
       await updateDoc(doc(db, 'users', auth.currentUser.uid), {
         pushToken: this.expoPushToken,
         updatedAt: new Date(),
       });
-      console.log('Push token saved to Firestore');
+      console.log('✅ NotificationService: Push token saved to Firestore successfully');
     } catch (error) {
-      console.error('Error saving push token:', error);
+      console.error('❌ NotificationService: Error saving push token:', error);
     }
   }
 
   // Remove push token when user signs out
   async removePushToken() {
-    if (!auth.currentUser) return;
+    if (!auth.currentUser) {
+      console.log('⚠️ NotificationService: Cannot remove push token - no user');
+      return;
+    }
 
     try {
+      console.log('🔔 NotificationService: Removing push token from Firestore...');
       await updateDoc(doc(db, 'users', auth.currentUser.uid), {
         pushToken: null,
         updatedAt: new Date(),
       });
-      console.log('Push token removed from Firestore');
+      console.log('✅ NotificationService: Push token removed from Firestore');
     } catch (error) {
-      console.error('Error removing push token:', error);
+      console.error('❌ NotificationService: Error removing push token:', error);
+    }
+  }
+
+  // Test notification function
+  async sendTestNotification() {
+    if (!this.expoPushToken) {
+      console.log('❌ NotificationService: No push token available for test');
+      return false;
+    }
+
+    try {
+      console.log('🔔 NotificationService: Sending test notification...');
+      const message = {
+        to: this.expoPushToken,
+        sound: 'default',
+        title: 'Test Notification',
+        body: 'This is a test notification from FitCheck',
+        data: { type: 'test' },
+      };
+
+      const response = await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Accept-encoding': 'gzip, deflate',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(message),
+      });
+
+      if (response.ok) {
+        console.log('✅ NotificationService: Test notification sent successfully');
+        return true;
+      } else {
+        console.error('❌ NotificationService: Test notification failed:', response.status);
+        return false;
+      }
+    } catch (error) {
+      console.error('❌ NotificationService: Error sending test notification:', error);
+      return false;
     }
   }
 
   // Send notification to specific user
   async sendNotificationToUser(userId, notificationData) {
     try {
+      console.log('🔔 NotificationService: Sending notification to user:', userId);
+      
       // Get user's push token
       const userDoc = await getDoc(doc(db, 'users', userId));
-      if (!userDoc.exists()) return;
+      if (!userDoc.exists()) {
+        console.log('❌ NotificationService: User document does not exist:', userId);
+        return;
+      }
 
       const userData = userDoc.data();
       const pushToken = userData.pushToken;
 
       if (!pushToken) {
-        console.log('User has no push token');
+        console.log('❌ NotificationService: User has no push token:', userId);
         return;
       }
 
-      // Send push notification
-      await this.sendPushNotification(pushToken, notificationData);
+      console.log('🔔 NotificationService: User push token found:', pushToken.substring(0, 20) + '...');
 
-      // Save notification to database for history
-      await this.saveNotificationToDatabase(userId, notificationData);
+      // Send push notification
+      const success = await this.sendPushNotification(pushToken, notificationData);
+      
+      if (success) {
+        // Save notification to database for history
+        await this.saveNotificationToDatabase(userId, notificationData);
+        console.log('✅ NotificationService: Notification sent and saved successfully');
+      } else {
+        console.log('❌ NotificationService: Failed to send push notification');
+      }
 
     } catch (error) {
-      console.error('Error sending notification to user:', error);
+      console.error('❌ NotificationService: Error sending notification to user:', error);
     }
   }
 
@@ -163,7 +240,13 @@ class NotificationService {
     };
 
     try {
-      await fetch('https://exp.host/--/api/v2/push/send', {
+      console.log('🔔 NotificationService: Sending push notification:', {
+        title: notificationData.title,
+        body: notificationData.body,
+        token: expoPushToken.substring(0, 20) + '...'
+      });
+
+      const response = await fetch('https://exp.host/--/api/v2/push/send', {
         method: 'POST',
         headers: {
           Accept: 'application/json',
@@ -172,9 +255,18 @@ class NotificationService {
         },
         body: JSON.stringify(message),
       });
-      console.log('Push notification sent successfully');
+
+      if (response.ok) {
+        console.log('✅ NotificationService: Push notification sent successfully');
+        return true;
+      } else {
+        const errorText = await response.text();
+        console.error('❌ NotificationService: Push notification failed:', response.status, errorText);
+        return false;
+      }
     } catch (error) {
-      console.error('Error sending push notification:', error);
+      console.error('❌ NotificationService: Error sending push notification:', error);
+      return false;
     }
   }
 
@@ -190,14 +282,24 @@ class NotificationService {
         read: false,
         createdAt: new Date(),
       });
+      console.log('✅ NotificationService: Notification saved to database');
     } catch (error) {
-      console.error('Error saving notification to database:', error);
+      console.error('❌ NotificationService: Error saving notification to database:', error);
     }
   }
 
   // Send comment notification
   async sendCommentNotification(fitId, commenterName, fitOwnerId) {
-    if (fitOwnerId === auth.currentUser?.uid) return; // Don't notify yourself
+    if (fitOwnerId === auth.currentUser?.uid) {
+      console.log('🔔 NotificationService: Skipping comment notification - commenting on own fit');
+      return;
+    }
+
+    console.log('🔔 NotificationService: Sending comment notification:', {
+      fitId,
+      commenterName,
+      fitOwnerId
+    });
 
     // Check user's notification preferences
     try {
@@ -207,12 +309,12 @@ class NotificationService {
         const preferences = userData.notificationPreferences || {};
         
         if (preferences.commentNotifications === false) {
-          console.log('Comment notifications disabled for user');
+          console.log('🔔 NotificationService: Comment notifications disabled for user:', fitOwnerId);
           return;
         }
       }
     } catch (error) {
-      console.error('Error checking notification preferences:', error);
+      console.error('❌ NotificationService: Error checking notification preferences:', error);
     }
 
     const notificationData = {
@@ -230,7 +332,16 @@ class NotificationService {
 
   // Send rating notification (anonymous) with debouncing
   async sendRatingNotification(fitId, fitOwnerId, rating) {
-    if (fitOwnerId === auth.currentUser?.uid) return; // Don't notify yourself
+    if (fitOwnerId === auth.currentUser?.uid) {
+      console.log('🔔 NotificationService: Skipping rating notification - rating own fit');
+      return;
+    }
+
+    console.log('🔔 NotificationService: Sending rating notification:', {
+      fitId,
+      fitOwnerId,
+      rating
+    });
 
     // Create unique key for this rater-fit combination (not fitOwner-fit)
     const raterId = auth.currentUser?.uid;
@@ -240,7 +351,7 @@ class NotificationService {
     // Check if this specific rater recently rated this fit
     const lastNotificationTime = this.recentRatingNotifications.get(notificationKey);
     if (lastNotificationTime && (now - lastNotificationTime) < this.RATING_COOLDOWN_MS) {
-      console.log('Rating notification skipped - cooldown period active for this rater');
+      console.log('🔔 NotificationService: Rating notification skipped - cooldown period active for this rater');
       return;
     }
 
@@ -252,12 +363,12 @@ class NotificationService {
         const preferences = userData.notificationPreferences || {};
         
         if (preferences.ratingNotifications === false) {
-          console.log('Rating notifications disabled for user');
+          console.log('🔔 NotificationService: Rating notifications disabled for user:', fitOwnerId);
           return;
         }
       }
     } catch (error) {
-      console.error('Error checking notification preferences:', error);
+      console.error('❌ NotificationService: Error checking notification preferences:', error);
     }
 
     const notificationData = {
@@ -285,9 +396,19 @@ class NotificationService {
   // Send new fit notification to group members (single group)
   async sendNewFitNotification(fitId, fitOwnerName, groupId, groupName) {
     try {
+      console.log('🔔 NotificationService: Sending new fit notification:', {
+        fitId,
+        fitOwnerName,
+        groupId,
+        groupName
+      });
+
       // Get group members
       const groupDoc = await getDoc(doc(db, 'groups', groupId));
-      if (!groupDoc.exists()) return;
+      if (!groupDoc.exists()) {
+        console.log('❌ NotificationService: Group document does not exist:', groupId);
+        return;
+      }
 
       const groupData = groupDoc.data();
       const members = groupData.members || [];
@@ -308,6 +429,8 @@ class NotificationService {
         },
       };
 
+      console.log('🔔 NotificationService: Sending to', otherMembers.length, 'group members');
+
       // Send to all other group members
       for (const memberId of otherMembers) {
         // Check user's notification preferences
@@ -318,25 +441,31 @@ class NotificationService {
             const preferences = userData.notificationPreferences || {};
             
             if (preferences.newFitNotifications === false) {
-              console.log('New fit notifications disabled for user:', memberId);
+              console.log('🔔 NotificationService: New fit notifications disabled for user:', memberId);
               continue;
             }
           }
         } catch (error) {
-          console.error('Error checking notification preferences:', error);
+          console.error('❌ NotificationService: Error checking notification preferences:', error);
         }
         
         await this.sendNotificationToUser(memberId, notificationData);
       }
 
     } catch (error) {
-      console.error('Error sending new fit notifications:', error);
+      console.error('❌ NotificationService: Error sending new fit notifications:', error);
     }
   }
 
   // Send new fit notification to all groups with deduplication
   async sendNewFitNotificationToAllGroups(fitId, fitOwnerName, userGroups) {
     try {
+      console.log('🔔 NotificationService: Sending new fit notification to all groups:', {
+        fitId,
+        fitOwnerName,
+        groupCount: userGroups.length
+      });
+
       const fitOwnerId = auth.currentUser?.uid;
       const notifiedUsers = new Set(); // Track users who have been notified
       
@@ -361,7 +490,7 @@ class NotificationService {
         });
       }
 
-      console.log(`Sending notifications to ${notifiedUsers.size} unique users`);
+      console.log(`🔔 NotificationService: Sending notifications to ${notifiedUsers.size} unique users`);
 
       // Batch fetch user preferences to reduce Firestore calls
       const userIds = Array.from(notifiedUsers);
@@ -383,7 +512,7 @@ class NotificationService {
         }
       });
 
-      console.log(`Actually notifying ${usersToNotify.length} users (after preferences)`);
+      console.log(`🔔 NotificationService: Actually notifying ${usersToNotify.length} users (after preferences)`);
 
       // Send notifications in parallel with rate limiting
       const notificationData = {
@@ -413,18 +542,33 @@ class NotificationService {
       }
 
     } catch (error) {
-      console.error('Error sending new fit notifications:', error);
+      console.error('❌ NotificationService: Error sending new fit notifications:', error);
     }
+  }
+
+  // Get service status
+  getStatus() {
+    return {
+      initialized: this.initialized,
+      hasToken: !!this.expoPushToken,
+      token: this.expoPushToken,
+      hasUser: !!auth.currentUser,
+    };
   }
 
   // Clean up listeners
   cleanup() {
+    console.log('🔔 NotificationService: Cleaning up notification listeners...');
+    
     if (this.notificationListener) {
       Notifications.removeNotificationSubscription(this.notificationListener);
     }
     if (this.responseListener) {
       Notifications.removeNotificationSubscription(this.responseListener);
     }
+    
+    this.initialized = false;
+    console.log('✅ NotificationService: Cleanup complete');
   }
 }
 
