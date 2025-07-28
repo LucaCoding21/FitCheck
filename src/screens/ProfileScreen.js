@@ -694,12 +694,13 @@ const styles = StyleSheet.create({
 
   // Fit grid styles
   fitGrid: {
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
   },
   fitGridItem: {
     width: GRID_ITEM_SIZE,
     height: GRID_ITEM_SIZE,
     marginBottom: GRID_SPACING,
+    marginRight: GRID_SPACING,
   },
   fitImageContainer: {
     width: '100%',

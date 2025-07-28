@@ -13,18 +13,44 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.fitcheck.app",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "FitCheck needs access to your photo library to select and post your daily fits.",
+        "NSCameraUsageDescription": "FitCheck needs access to your camera to take photos of your daily fits.",
+        "NSUserNotificationsUsageDescription": "FitCheck sends notifications for new comments, ratings, and daily reminders.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "package": "com.fitcheck.app",
+      "versionCode": 1,
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/noti.png",
+          "color": "#B5483D"
+        }
+      ]
+    ],
     "extra": {
       "eas": {
         "projectId": "f2827a96-31a7-42b8-978a-3f54697a207d"
